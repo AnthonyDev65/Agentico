@@ -400,7 +400,7 @@ export default function PhonePreview({
           {/* Pantalla (recorta con esquinas redondeadas). El fondo toma el color
               real de la página para que la franja de la barra de estado combine. */}
           <div
-            className="absolute overflow-hidden"
+            className="absolute isolate overflow-hidden"
             style={{ ...screenStyle, background: manualBg ?? pageBg }}
           >
             <div
