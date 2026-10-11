@@ -1,0 +1,88 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Agentico — AurCode · Tu IDE con IA',
+  description = 'AurCode es el IDE de escritorio potenciado por IA que embebe a Claude. Construye, previsualiza y despliega tus proyectos sin salir del editor.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#121212" />
+
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..600&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+
+    <!--
+      Scroll-reveal driver. Plain, framework-agnostic JS so it runs reliably
+      regardless of whether the React island hydrates. It opts into the
+      hidden-then-revealed animation only when IntersectionObserver exists,
+      and a safety timeout guarantees everything becomes visible.
+    -->
+    <script is:inline>
+      (function () {
+        var root = document.documentElement;
+        if (!('IntersectionObserver' in window)) return; // leave content visible
+
+        root.classList.add('reveal-js');
+
+        var start = function () {
+          var els = document.querySelectorAll('.reveal');
+          var show = function (el) {
+            el.classList.add('is-visible');
+          };
+          var io = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                  show(entry.target);
+                  io.unobserve(entry.target);
+                }
+              });
+            },
+            { rootMargin: '0px 0px -80px 0px' },
+          );
+          els.forEach(function (el) {
+            io.observe(el);
+          });
+          // Safety net: never leave content stuck hidden.
+          setTimeout(function () {
+            els.forEach(show);
+          }, 1800);
+        };
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', start);
+        } else {
+          start();
+        }
+      })();
+    </script>
+  </body>
+</html>

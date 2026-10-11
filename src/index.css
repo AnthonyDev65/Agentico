@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans Variable", "Inter", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #121212;
+  color: #e4e4e7; /* zinc-200 */
+  font-family: var(--font-sans);
+  overflow: hidden;
+  /* Sensación de app nativa: no seleccionar texto de la UI… */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* …pero sí donde el texto importa (editores, terminal, inputs, chat, código). */
+input,
+textarea,
+[contenteditable="true"],
+.cm-editor,
+.xterm,
+.wmde-markdown,
+.md,
+pre,
+code,
+.select-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Scrollbars oscuras y finas */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+  background-clip: content-box;
+}
+
+/* La terminal xterm ocupa todo su contenedor */
+.xterm,
+.xterm-viewport {
+  height: 100% !important;
+}
+
+/* Editor de markdown (@uiw/react-md-editor) — tema oscuro del IDE */
+.w-md-editor {
+  height: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background-color: #121212 !important;
+  color: #e4e4e7 !important;
+  --color-canvas-default: #121212;
+  --color-canvas-subtle: #18181b;
+  --color-border-default: #27272a;
+  --color-border-muted: #27272a;
+  --color-fg-default: #e4e4e7;
+  --color-fg-muted: #a1a1aa;
+  --color-fg-subtle: #71717a;
+  --color-accent-fg: #818cf8;
+  --color-neutral-muted: rgba(113, 113, 122, 0.2);
+}
+.w-md-editor-toolbar {
+  background-color: #18181b !important;
+  border-bottom: 1px solid #27272a !important;
+  padding: 4px 6px !important;
+}
+.w-md-editor-toolbar ul > li > button {
+  color: #a1a1aa !important;
+}
+.w-md-editor-toolbar ul > li > button:hover,
+.w-md-editor-toolbar ul > li > button:focus {
+  color: #fafafa !important;
+  background-color: #27272a !important;
+}
+.w-md-editor-toolbar li.active > button {
+  color: #818cf8 !important;
+  background-color: #27272a !important;
+}
+.w-md-editor-toolbar-divider {
+  background-color: #3f3f46 !important;
+}
+.w-md-editor-content {
+  background-color: #121212 !important;
+}
+.w-md-editor-text-pre,
+.w-md-editor-text-input,
+.w-md-editor-text > .w-md-editor-text-pre > code {
+  color: #e4e4e7 !important;
+  font-family: var(--font-mono) !important;
+}
+.w-md-editor-preview {
+  background-color: #121212 !important;
+  box-shadow: inset 1px 0 0 0 #27272a !important;
+}
+.wmde-markdown {
+  background-color: #121212 !important;
+  color: #e4e4e7 !important;
+  --color-canvas-default: #121212;
+  --color-canvas-subtle: #18181b;
+  --color-border-default: #27272a;
+  --color-border-muted: #27272a;
+  --color-fg-default: #e4e4e7;
+  --color-fg-muted: #a1a1aa;
+  --color-accent-fg: #818cf8;
+}
+
+/* Oculta la barra de scroll (p.ej. en las pestañas) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fondo de tablero para preview de imágenes (transparencia) */
+.checker {
+  background-color: #0d0d10;
+  background-image:
+    linear-gradient(45deg, #1b1b1f 25%, transparent 25%),
+    linear-gradient(-45deg, #1b1b1f 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1b1b1f 75%),
+    linear-gradient(-45deg, transparent 75%, #1b1b1f 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+}
+
+/* Markdown del chat */
+.md {
+  line-height: 1.55;
+}
+.md > *:first-child {
+  margin-top: 0;
+}
+.md > *:last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0.5em 0;
+}
+.md ul,
+.md ol {
+  margin: 0.5em 0;
+  padding-left: 1.3em;
+}
+.md ul {
+  list-style: disc;
+}
+.md ol {
+  list-style: decimal;
+}
+.md li {
+  margin: 0.2em 0;
+}
+.md a {
+  color: #818cf8;
+  text-decoration: underline;
+}
+.md code {
+  background: #0f0f12;
+  border: 1px solid #27272a;
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.md pre {
+  background: #0d0d10;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 0.7em 0.9em;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.md pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 0.82em;
+}
+.md h1,
+.md h2,
+.md h3 {
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+  line-height: 1.3;
+}
+.md h1 {
+  font-size: 1.15em;
+}
+.md h2 {
+  font-size: 1.08em;
+}
+.md h3 {
+  font-size: 1em;
+}
+.md blockquote {
+  border-left: 3px solid #3f3f46;
+  padding-left: 0.8em;
+  color: #a1a1aa;
+  margin: 0.5em 0;
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+.md th,
+.md td {
+  border: 1px solid #27272a;
+  padding: 0.3em 0.6em;
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid #27272a;
+  margin: 0.8em 0;
+}
+.md img {
+  max-width: 100%;
+  border-radius: 6px;
+}
