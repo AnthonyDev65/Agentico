@@ -11,6 +11,7 @@ import {
   InternetIcon,
   FlashIcon,
   CpuIcon,
+  Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import { ClaudeLogo } from "@/components/ClaudeLogo";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ export default function ProjectTabs({
   onOpenDomains,
   onOpenApi,
   onOpenDoctor,
+  onOpenSettings,
   onReorder,
 }: {
   projects: Project[];
@@ -43,6 +45,7 @@ export default function ProjectTabs({
   onOpenDomains: () => void;
   onOpenApi: () => void;
   onOpenDoctor: () => void;
+  onOpenSettings: () => void;
   onReorder: (fromPath: string, toPath: string) => void;
 }) {
   const [logoMenu, setLogoMenu] = useState<{ x: number; y: number } | null>(null);
@@ -118,6 +121,16 @@ export default function ProjectTabs({
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
             >
               <HugeiconsIcon icon={CpuIcon} size={14} className="text-zinc-400" /> Requisitos del sistema
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLogoMenu(null);
+                onOpenSettings();
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            >
+              <HugeiconsIcon icon={Settings01Icon} size={14} className="text-zinc-400" /> Configuración
             </button>
           </div>,
           document.body,

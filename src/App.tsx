@@ -8,6 +8,7 @@ import PortManager from "@/components/PortManager";
 import DomainManager from "@/components/DomainManager";
 import ApiClient from "@/components/ApiClient";
 import SystemDoctor from "@/components/SystemDoctor";
+import Settings from "@/components/Settings";
 import { cn } from "@/lib/utils";
 
 function basename(p: string): string {
@@ -24,6 +25,7 @@ function App() {
   const [showDomains, setShowDomains] = useState(false);
   const [showApi, setShowApi] = useState(false);
   const [showDoctor, setShowDoctor] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const loadedRef = useRef(false);
 
   const fetchIcon = async (path: string) => {
@@ -132,6 +134,7 @@ function App() {
         onOpenDomains={() => setShowDomains(true)}
         onOpenApi={() => setShowApi(true)}
         onOpenDoctor={() => setShowDoctor(true)}
+        onOpenSettings={() => setShowSettings(true)}
         onReorder={reorderProjects}
       />
 
@@ -139,6 +142,7 @@ function App() {
       {showDomains && <DomainManager onClose={() => setShowDomains(false)} />}
       {showApi && <ApiClient onClose={() => setShowApi(false)} />}
       {showDoctor && <SystemDoctor onClose={() => setShowDoctor(false)} />}
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
 
       <div className="relative min-h-0 flex-1">
         {projects

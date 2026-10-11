@@ -154,8 +154,8 @@ export default function ChatView({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [perm, setPerm] = useState("acceptEdits");
-  const [model, setModel] = useState("auto");
+  const [perm, setPerm] = useState(() => localStorage.getItem("agentico.chat.perm") || "acceptEdits");
+  const [model, setModel] = useState(() => localStorage.getItem("agentico.chat.model") || "auto");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [mentions, setMentions] = useState<string[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -328,8 +328,8 @@ export default function ChatView({
         await invoke("chat_start", {
           id: sessionId,
           cwd,
-          permissionMode: "acceptEdits",
-          model: null,
+          permissionMode: perm,
+          model: model === "auto" ? null : model,
         });
       } catch (err) {
         add({ id: newId(), kind: "error", text: `No se pudo iniciar el chat: ${err}` });

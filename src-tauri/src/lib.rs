@@ -1919,6 +1919,34 @@ fn install_prereq(app: tauri::AppHandle, id: String, which: String) -> Result<()
     }
 }
 
+/// Devuelve la versión de un programa (o None si no está instalado).
+#[tauri::command]
+fn tool_version(program: String, args: Vec<String>) -> Option<String> {
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    cmd_version(&program, &refs)
+}
+
+/// Ejecuta un instalador arbitrario transmitiendo la salida por `create://log`.
+/// El frontend decide el programa/args correctos según el SO.
+#[tauri::command]
+fn run_install(
+    app: tauri::AppHandle,
+    id: String,
+    program: String,
+    args: Vec<String>,
+) -> Result<(), String> {
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_cmd_streamed(&app, &id, ".", &program, &refs)?;
+    let _ = app.emit(
+        "create://log",
+        CreateLog {
+            id: id.clone(),
+            line: "✓ Instalación finalizada".into(),
+        },
+    );
+    Ok(())
+}
+
 // ───────────────────────── Gestor de puertos ─────────────────────────
 
 #[derive(Serialize)]
@@ -2297,6 +2325,8 @@ pub fn run() {
             http_request,
             check_prereqs,
             install_prereq,
+            tool_version,
+            run_install,
             set_proxy_port
         ])
         .run(tauri::generate_context!())
