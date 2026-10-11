@@ -16,10 +16,12 @@ export default function TerminalView({
   sessionId,
   cwd,
   kind = "claude",
+  startupCommand,
 }: {
   sessionId: string;
   cwd: string;
   kind?: "claude" | "shell";
+  startupCommand?: string;
 }) {
   const termRef = useRef<HTMLDivElement>(null);
 
@@ -69,7 +71,17 @@ export default function TerminalView({
           cols: term.cols,
           rows: term.rows,
           kind,
-        }).catch((err) => term.writeln(`\r\n\x1b[31mError al arrancar la sesión: ${err}\x1b[0m`));
+        })
+          .then(() => {
+            // Terminal con comando de arranque (ej. una CLI agéntica): lo
+            // escribimos una vez cuando el shell ya está listo.
+            if (startupCommand) {
+              setTimeout(() => {
+                invoke("pty_write", { id: sessionId, data: startupCommand + "\r" }).catch(() => {});
+              }, 600);
+            }
+          })
+          .catch((err) => term.writeln(`\r\n\x1b[31mError al arrancar la sesión: ${err}\x1b[0m`));
       } else {
         invoke("pty_resize", { id: sessionId, cols: term.cols, rows: term.rows }).catch(() => {});
       }

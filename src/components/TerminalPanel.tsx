@@ -21,6 +21,17 @@ import {
   SmartPhone01Icon,
   Message01Icon,
 } from "@hugeicons/core-free-icons";
+import {
+  siSupabase,
+  siVercel,
+  siGithub,
+  siNetlify,
+  siGooglegemini,
+  siAnthropic,
+  siCloudflare,
+  siFirebase,
+  siRailway,
+} from "simple-icons";
 import { ClaudeLogo } from "@/components/ClaudeLogo";
 import type { Project, PackageInfo } from "@/components/Workspace";
 import TerminalView from "@/TerminalView";
@@ -32,7 +43,8 @@ import LibrariesPanel from "@/components/LibrariesPanel";
 import MCPPanel from "@/components/MCPPanel";
 import { cn } from "@/lib/utils";
 
-type View = "code" | "git" | "skills" | "libs" | "mcp" | "claude" | "terminal" | "web";
+// Las vistas fijas usan su id; las dinámicas usan `tab:<uuid>`.
+type View = string;
 
 function commandFor(manager: string, script: string): string {
   if (manager === "yarn") return `yarn ${script}`;
@@ -45,6 +57,68 @@ function installCommand(manager: string): string {
   if (manager === "bun") return "bun install";
   return `${manager} install`; // npm / pnpm
 }
+
+// ───────────────── Servicios / terminales dinámicas ─────────────────
+
+type TabKind = "terminal" | "web";
+type DynTab = { id: string; label: string; kind: TabKind; command?: string; url?: string; logo?: string };
+
+const LOGOS: Record<string, { path: string; hex: string }> = {
+  supabase: siSupabase,
+  vercel: siVercel,
+  github: siGithub,
+  netlify: siNetlify,
+  gemini: siGooglegemini,
+  anthropic: siAnthropic,
+  cloudflare: siCloudflare,
+  firebase: siFirebase,
+  railway: siRailway,
+};
+function logoColor(hex: string): string {
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return (r + g + b) / 3 < 48 ? "#e5e5e5" : `#${hex}`;
+}
+function TabLogo({ logo, kind }: { logo?: string; kind: TabKind }) {
+  const si = logo ? LOGOS[logo] : undefined;
+  if (si)
+    return (
+      <svg viewBox="0 0 24 24" className="size-3.5 shrink-0" fill={logoColor(si.hex)} aria-hidden="true">
+        <path d={si.path} />
+      </svg>
+    );
+  return (
+    <HugeiconsIcon
+      icon={kind === "web" ? GlobalIcon : ComputerTerminal01Icon}
+      size={14}
+      className="shrink-0 text-indigo-300"
+    />
+  );
+}
+
+type CatalogItem = {
+  id: string;
+  label: string;
+  group: string;
+  kind: TabKind;
+  command?: string;
+  logo?: string;
+};
+const CATALOG: CatalogItem[] = [
+  { id: "opencode", label: "OpenCode", group: "Terminales agénticas", kind: "terminal", command: "opencode" },
+  { id: "claudex", label: "Claude (otra sesión)", group: "Terminales agénticas", kind: "terminal", command: "claude", logo: "anthropic" },
+  { id: "gemini", label: "Gemini CLI", group: "Terminales agénticas", kind: "terminal", command: "gemini", logo: "gemini" },
+  { id: "aider", label: "Aider", group: "Terminales agénticas", kind: "terminal", command: "aider" },
+  { id: "supabase", label: "Supabase CLI", group: "Servicios / CLIs", kind: "terminal", command: "supabase", logo: "supabase" },
+  { id: "vercel", label: "Vercel CLI", group: "Servicios / CLIs", kind: "terminal", command: "vercel", logo: "vercel" },
+  { id: "gh", label: "GitHub CLI", group: "Servicios / CLIs", kind: "terminal", command: "gh", logo: "github" },
+  { id: "netlify", label: "Netlify CLI", group: "Servicios / CLIs", kind: "terminal", command: "netlify", logo: "netlify" },
+  { id: "wrangler", label: "Cloudflare (wrangler)", group: "Servicios / CLIs", kind: "terminal", command: "wrangler", logo: "cloudflare" },
+  { id: "firebase", label: "Firebase CLI", group: "Servicios / CLIs", kind: "terminal", command: "firebase", logo: "firebase" },
+  { id: "railway", label: "Railway CLI", group: "Servicios / CLIs", kind: "terminal", command: "railway", logo: "railway" },
+];
+const CAT_GROUPS = [...new Set(CATALOG.map((c) => c.group))];
 
 export default function TerminalPanel({
   project,
@@ -71,6 +145,49 @@ export default function TerminalPanel({
   const [view, setView] = useState<View>("code");
   const [webActivated, setWebActivated] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Pestañas dinámicas (servicios / terminales agénticas).
+  const tabsKey = `agentico.tabs.${project.path}`;
+  const [tabs, setTabs] = useState<DynTab[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(tabsKey) ?? "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [activatedTabs, setActivatedTabs] = useState<Set<string>>(new Set());
+  const [addOpen, setAddOpen] = useState(false);
+  const addBtnRef = useRef<HTMLButtonElement>(null);
+
+  const persistTabs = (next: DynTab[]) => {
+    setTabs(next);
+    try {
+      localStorage.setItem(tabsKey, JSON.stringify(next));
+    } catch {
+      /* no-op */
+    }
+  };
+  const addTab = (t: Omit<DynTab, "id">) => {
+    const id = crypto.randomUUID();
+    persistTabs([...tabs, { id, ...t }]);
+    setActivatedTabs((s) => new Set(s).add(id));
+    setView(`tab:${id}`);
+    setAddOpen(false);
+  };
+  const closeTab = (id: string) => {
+    invoke("pty_kill", { id: `${project.path}::tab::${id}` }).catch(() => {});
+    persistTabs(tabs.filter((t) => t.id !== id));
+    setActivatedTabs((s) => {
+      const n = new Set(s);
+      n.delete(id);
+      return n;
+    });
+    if (view === `tab:${id}`) setView("code");
+  };
+  const activateTab = (id: string) => {
+    setActivatedTabs((s) => (s.has(id) ? s : new Set(s).add(id)));
+    setView(`tab:${id}`);
+  };
 
   const runKey = `agentico.runcmd.${project.path}`;
   const customKey = `agentico.runcmds.${project.path}`;
@@ -183,6 +300,49 @@ export default function TerminalPanel({
         >
           <HugeiconsIcon icon={GlobalIcon} size={14} />
         </ViewTab>
+
+        {/* Pestañas dinámicas (servicios / terminales) */}
+        {tabs.map((t) => (
+          <div
+            key={t.id}
+            onClick={() => activateTab(t.id)}
+            title={t.command ?? t.url}
+            className={cn(
+              "group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+              view === `tab:${t.id}`
+                ? "bg-zinc-800 text-zinc-100"
+                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200",
+            )}
+          >
+            <TabLogo logo={t.logo} kind={t.kind} />
+            <span className="max-w-[96px] truncate">{t.label}</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeTab(t.id);
+              }}
+              aria-label="Cerrar pestaña"
+              className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity hover:bg-zinc-700 group-hover:opacity-70"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={11} />
+            </button>
+          </div>
+        ))}
+
+        {/* Añadir servicio / terminal */}
+        <button
+          ref={addBtnRef}
+          type="button"
+          onClick={() => setAddOpen((o) => !o)}
+          title="Añadir servicio o terminal (Supabase, Vercel, OpenCode…)"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        >
+          <HugeiconsIcon icon={Add01Icon} size={16} />
+        </button>
+        {addOpen && (
+          <AddServiceMenu anchor={addBtnRef.current} onAdd={addTab} onClose={() => setAddOpen(false)} />
+        )}
 
         <div className="ml-auto flex items-center gap-1">
           {needsInstall && (
@@ -309,6 +469,35 @@ export default function TerminalPanel({
           >
             <WebView port={port} reloadKey={reloadKey} onReload={() => setReloadKey((k) => k + 1)} />
           </div>
+        )}
+
+        {/* Vistas de las pestañas dinámicas (se montan al activarse y se mantienen) */}
+        {tabs.map(
+          (t) =>
+            activatedTabs.has(t.id) && (
+              <div
+                key={t.id}
+                className={cn(
+                  "absolute inset-0 flex",
+                  view === `tab:${t.id}` ? "" : "pointer-events-none opacity-0",
+                )}
+              >
+                {t.kind === "terminal" ? (
+                  <TerminalView
+                    sessionId={`${project.path}::tab::${t.id}`}
+                    cwd={project.path}
+                    kind="shell"
+                    startupCommand={t.command}
+                  />
+                ) : (
+                  <iframe
+                    src={t.url}
+                    title={t.label}
+                    className="h-full w-full border-0 bg-white"
+                  />
+                )}
+              </div>
+            ),
         )}
       </div>
     </div>
@@ -468,6 +657,130 @@ function RunButton({
           document.body,
         )}
     </div>
+  );
+}
+
+function AddServiceMenu({
+  anchor,
+  onAdd,
+  onClose,
+}: {
+  anchor: HTMLButtonElement | null;
+  onAdd: (t: Omit<DynTab, "id">) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [label, setLabel] = useState("");
+  const [cmd, setCmd] = useState("");
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    if (anchor) {
+      const r = anchor.getBoundingClientRect();
+      setPos({ left: Math.max(8, r.left - 60), top: r.bottom + 6 });
+    }
+  }, [anchor]);
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || anchor?.contains(t)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [anchor, onClose]);
+
+  if (!pos) return null;
+  return createPortal(
+    <div
+      ref={ref}
+      style={{ position: "fixed", left: pos.left, top: pos.top }}
+      className="z-50 max-h-[72vh] w-72 overflow-auto rounded-lg border border-zinc-800 bg-[#1a1a1a] p-1 shadow-xl shadow-black/50"
+    >
+      {CAT_GROUPS.map((g) => (
+        <div key={g}>
+          <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-600">{g}</div>
+          {CATALOG.filter((c) => c.group === g).map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onAdd({ label: c.label, kind: c.kind, command: c.command, logo: c.logo })}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+            >
+              <TabLogo logo={c.logo} kind={c.kind} /> {c.label}
+            </button>
+          ))}
+        </div>
+      ))}
+
+      <div className="my-1 h-px bg-zinc-800" />
+      <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-600">Personalizado</div>
+      <div className="space-y-1.5 p-1.5">
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="nombre (opcional)"
+          spellCheck={false}
+          className="w-full rounded bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100 outline-none"
+        />
+        <div className="flex gap-1">
+          <input
+            value={cmd}
+            onChange={(e) => setCmd(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && cmd.trim())
+                onAdd({ label: label.trim() || cmd.trim(), kind: "terminal", command: cmd.trim() });
+            }}
+            placeholder="comando de terminal (ej. aider)"
+            spellCheck={false}
+            className="min-w-0 flex-1 rounded bg-zinc-900 px-2 py-1 font-mono text-[11px] text-zinc-100 outline-none"
+          />
+          <button
+            type="button"
+            disabled={!cmd.trim()}
+            onClick={() => onAdd({ label: label.trim() || cmd.trim(), kind: "terminal", command: cmd.trim() })}
+            title="Añadir terminal"
+            className="flex items-center rounded bg-zinc-800 px-2 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={12} />
+          </button>
+        </div>
+        <div className="flex gap-1">
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && url.trim())
+                onAdd({
+                  label: label.trim() || "Web",
+                  kind: "web",
+                  url: url.trim().startsWith("http") ? url.trim() : `http://${url.trim()}`,
+                });
+            }}
+            placeholder="URL (vista web, ej. localhost:54323)"
+            spellCheck={false}
+            className="min-w-0 flex-1 rounded bg-zinc-900 px-2 py-1 font-mono text-[11px] text-zinc-100 outline-none"
+          />
+          <button
+            type="button"
+            disabled={!url.trim()}
+            onClick={() =>
+              onAdd({
+                label: label.trim() || "Web",
+                kind: "web",
+                url: url.trim().startsWith("http") ? url.trim() : `http://${url.trim()}`,
+              })
+            }
+            title="Añadir vista web"
+            className="flex items-center rounded bg-zinc-800 px-2 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
+          >
+            <HugeiconsIcon icon={GlobalIcon} size={12} />
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
