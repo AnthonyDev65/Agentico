@@ -1828,6 +1828,97 @@ fn clone_repo(
     Ok(Path::new(&parent_dir).join(&name).to_string_lossy().to_string())
 }
 
+// ───────────────── Prerequisitos del sistema (Node / Claude / Git) ─────────────────
+
+fn cmd_version(program: &str, args: &[&str]) -> Option<String> {
+    let out = run_cmd(".", program, args).ok()?;
+    let line = out.lines().next().unwrap_or("").trim().to_string();
+    if line.is_empty() {
+        None
+    } else {
+        Some(line)
+    }
+}
+
+#[derive(Serialize)]
+struct Prereqs {
+    node: Option<String>,
+    npm: Option<String>,
+    claude: Option<String>,
+    git: Option<String>,
+    os: String,
+}
+
+#[tauri::command]
+fn check_prereqs() -> Prereqs {
+    Prereqs {
+        node: cmd_version("node", &["-v"]),
+        npm: cmd_version("npm", &["-v"]),
+        claude: cmd_version("claude", &["--version"]),
+        git: cmd_version("git", &["--version"]),
+        os: std::env::consts::OS.to_string(),
+    }
+}
+
+/// Instala un prerequisito transmitiendo la salida por `create://log`.
+/// which: "node" | "claude" | "git". Usa winget (Windows) o brew (macOS);
+/// en Linux devuelve una sugerencia (requiere gestor de paquetes con sudo).
+#[tauri::command]
+fn install_prereq(app: tauri::AppHandle, id: String, which: String) -> Result<(), String> {
+    let winget = |app: &tauri::AppHandle, id: &str, pkg: &str| {
+        run_cmd_streamed(
+            app,
+            id,
+            ".",
+            "winget",
+            &[
+                "install",
+                "-e",
+                "--id",
+                pkg,
+                "--accept-source-agreements",
+                "--accept-package-agreements",
+            ],
+        )
+    };
+    match which.as_str() {
+        "node" => {
+            if cfg!(windows) {
+                winget(&app, &id, "OpenJS.NodeJS.LTS")
+            } else if cfg!(target_os = "macos") {
+                run_cmd_streamed(&app, &id, ".", "brew", &["install", "node"])
+            } else {
+                Err("En Linux instala Node con tu gestor de paquetes (ej. `sudo apt install nodejs npm`) o con nvm/fnm, y reinicia la app.".into())
+            }
+        }
+        "git" => {
+            if cfg!(windows) {
+                winget(&app, &id, "Git.Git")
+            } else if cfg!(target_os = "macos") {
+                run_cmd_streamed(&app, &id, ".", "brew", &["install", "git"])
+            } else {
+                Err("En Linux instala Git con tu gestor de paquetes (ej. `sudo apt install git`).".into())
+            }
+        }
+        "claude" => {
+            // Requiere npm; funciona en los 3 SO.
+            run_cmd_streamed(
+                &app,
+                &id,
+                ".",
+                "npm",
+                &["install", "-g", "@anthropic-ai/claude-code"],
+            )?;
+            let _ = app.emit(
+                "create://log",
+                CreateLog { id: id.clone(), line: "✓ Claude CLI instalado. Ejecuta `claude` una vez para iniciar sesión.".into() },
+            );
+            Ok(())
+        }
+        _ => Err(format!("prerequisito desconocido: {}", which)),
+    }
+}
+
 // ───────────────────────── Gestor de puertos ─────────────────────────
 
 #[derive(Serialize)]
@@ -2204,6 +2295,8 @@ pub fn run() {
             chat_sessions,
             chat_session_read,
             http_request,
+            check_prereqs,
+            install_prereq,
             set_proxy_port
         ])
         .run(tauri::generate_context!())

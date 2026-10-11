@@ -9,7 +9,10 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 
-const PROXY = "http://agproxy.localhost";
+const PROXY =
+  typeof window !== "undefined" && window.location.protocol.startsWith("http")
+    ? "http://agproxy.localhost"
+    : "agproxy://localhost";
 
 type Log = { id: number; level: string; text: string };
 

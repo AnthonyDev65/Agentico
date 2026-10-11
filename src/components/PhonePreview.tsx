@@ -12,8 +12,11 @@ import {
 
 const DEVICE_SVG = "/devices/iphone-17-promax-deepblue.svg";
 // Proxy del backend (esquema registrado en Rust). En Windows Tauri lo mapea a
-// http://<scheme>.localhost. Reenvía al dev server añadiendo CORS.
-const PROXY = "http://agproxy.localhost";
+// http://<scheme>.localhost; en Linux/macOS a <scheme>://localhost.
+const PROXY =
+  typeof window !== "undefined" && window.location.protocol.startsWith("http")
+    ? "http://agproxy.localhost"
+    : "agproxy://localhost";
 // Área de pantalla dentro del viewBox 448×916 del SVG.
 const SCREEN = { left: 24 / 448, top: 21 / 916, right: 426 / 448, bottom: 895 / 916 };
 const CORNER_VB = 54;

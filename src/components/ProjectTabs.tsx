@@ -10,6 +10,7 @@ import {
   GlobalIcon,
   InternetIcon,
   FlashIcon,
+  CpuIcon,
 } from "@hugeicons/core-free-icons";
 import { ClaudeLogo } from "@/components/ClaudeLogo";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ export default function ProjectTabs({
   onOpenPorts,
   onOpenDomains,
   onOpenApi,
+  onOpenDoctor,
   onReorder,
 }: {
   projects: Project[];
@@ -40,6 +42,7 @@ export default function ProjectTabs({
   onOpenPorts: () => void;
   onOpenDomains: () => void;
   onOpenApi: () => void;
+  onOpenDoctor: () => void;
   onReorder: (fromPath: string, toPath: string) => void;
 }) {
   const [logoMenu, setLogoMenu] = useState<{ x: number; y: number } | null>(null);
@@ -105,6 +108,16 @@ export default function ProjectTabs({
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
             >
               <HugeiconsIcon icon={FlashIcon} size={14} className="text-zinc-400" /> Cliente API
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLogoMenu(null);
+                onOpenDoctor();
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            >
+              <HugeiconsIcon icon={CpuIcon} size={14} className="text-zinc-400" /> Requisitos del sistema
             </button>
           </div>,
           document.body,

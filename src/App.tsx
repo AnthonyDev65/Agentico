@@ -7,6 +7,7 @@ import WelcomeScreen from "@/components/WelcomeScreen";
 import PortManager from "@/components/PortManager";
 import DomainManager from "@/components/DomainManager";
 import ApiClient from "@/components/ApiClient";
+import SystemDoctor from "@/components/SystemDoctor";
 import { cn } from "@/lib/utils";
 
 function basename(p: string): string {
@@ -22,6 +23,7 @@ function App() {
   const [showPorts, setShowPorts] = useState(false);
   const [showDomains, setShowDomains] = useState(false);
   const [showApi, setShowApi] = useState(false);
+  const [showDoctor, setShowDoctor] = useState(false);
   const loadedRef = useRef(false);
 
   const fetchIcon = async (path: string) => {
@@ -53,6 +55,18 @@ function App() {
     if (!loadedRef.current) return;
     invoke("projects_save", { workspace: { projects, active } }).catch(() => {});
   }, [projects, active]);
+
+  // Si falta el Claude CLI, abre el asistente de requisitos al arrancar.
+  useEffect(() => {
+    (async () => {
+      try {
+        const p = await invoke<{ claude: string | null }>("check_prereqs");
+        if (!p.claude) setShowDoctor(true);
+      } catch {
+        /* no-op */
+      }
+    })();
+  }, []);
 
   const activate = (path: string) => {
     setActivated((a) => (a.includes(path) ? a : [...a, path]));
@@ -117,12 +131,14 @@ function App() {
         onOpenPorts={() => setShowPorts(true)}
         onOpenDomains={() => setShowDomains(true)}
         onOpenApi={() => setShowApi(true)}
+        onOpenDoctor={() => setShowDoctor(true)}
         onReorder={reorderProjects}
       />
 
       {showPorts && <PortManager onClose={() => setShowPorts(false)} />}
       {showDomains && <DomainManager onClose={() => setShowDomains(false)} />}
       {showApi && <ApiClient onClose={() => setShowApi(false)} />}
+      {showDoctor && <SystemDoctor onClose={() => setShowDoctor(false)} />}
 
       <div className="relative min-h-0 flex-1">
         {projects
