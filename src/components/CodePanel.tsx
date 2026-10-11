@@ -126,6 +126,22 @@ const RS_SNIPPETS: Snip[] = [
   { label: "println!", type: "function", apply: 'println!("");' },
   { label: "match", type: "keyword", apply: "match  {\n    \n}" },
 ];
+const XAML_SNIPPETS: Snip[] = [
+  { label: "Grid", type: "type", apply: "<Grid>\n    \n</Grid>" },
+  { label: "StackPanel", type: "type", apply: '<StackPanel Orientation="Vertical">\n    \n</StackPanel>' },
+  { label: "Button", type: "type", apply: '<Button Content="" Click="" />' },
+  { label: "TextBlock", type: "type", apply: '<TextBlock Text="" />' },
+  { label: "TextBox", type: "type", apply: '<TextBox Text="{Binding }" />' },
+  { label: "Label", type: "type", apply: '<Label Content="" />' },
+  { label: "Border", type: "type", apply: '<Border BorderBrush="Gray" BorderThickness="1">\n    \n</Border>' },
+  { label: "ComboBox", type: "type", apply: '<ComboBox ItemsSource="{Binding }" />' },
+  { label: "ListBox", type: "type", apply: '<ListBox ItemsSource="{Binding }" />' },
+  { label: "Image", type: "type", apply: '<Image Source="" />' },
+  { label: "ColumnDefinition", type: "type", apply: '<ColumnDefinition Width="*" />' },
+  { label: "RowDefinition", type: "type", apply: '<RowDefinition Height="Auto" />' },
+  { label: "Binding", type: "value", apply: "{Binding }" },
+  { label: "StaticResource", type: "value", apply: "{StaticResource }" },
+];
 const CS_SNIPPETS: Snip[] = [
   { label: "Console.WriteLine", type: "function", apply: 'Console.WriteLine();' },
   { label: "public", type: "keyword" },
@@ -181,6 +197,8 @@ function langFor(name: string): Extension[] {
       return withWords(l, l, CS_SNIPPETS);
     }
     case "xaml":
+    case "axaml":
+      return withWords(html(), htmlLanguage, XAML_SNIPPETS);
     case "csproj":
     case "props":
     case "targets":
