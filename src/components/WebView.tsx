@@ -6,6 +6,7 @@ import {
   ComputerTerminal01Icon,
   Delete02Icon,
   Cancel01Icon,
+  Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 
@@ -28,9 +29,36 @@ export default function WebView({
   const url = `http://localhost:${port}`;
   const [showConsole, setShowConsole] = useState(false);
   const [proxyArmed, setProxyArmed] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [waited, setWaited] = useState(0);
   const [logs, setLogs] = useState<Log[]>([]);
   const idRef = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Espera a que el dev server responda antes de cargar el iframe, así no se
+  // muestra "connection refused"; cuando arranca, carga solo (sin recargar a mano).
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    setWaited(0);
+    const t0 = Date.now();
+    const check = async () => {
+      if (cancelled) return;
+      try {
+        await fetch(`${url}/`, { mode: "no-cors", cache: "no-store" });
+        if (!cancelled) setReady(true);
+      } catch {
+        if (!cancelled) {
+          setWaited(Math.round((Date.now() - t0) / 1000));
+          setTimeout(check, 1200);
+        }
+      }
+    };
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, [url, reloadKey]);
 
   // Al capturar consola, el iframe pasa por el proxy (que inyecta el captador).
   // Desactiva el HMR de Vite; se recarga con el botón. Fijamos el puerto ANTES
@@ -79,12 +107,29 @@ export default function WebView({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      <iframe
-        key={src}
-        src={src}
-        title="Vista web"
-        className="min-h-0 flex-1 border-0 bg-white"
-      />
+      {ready ? (
+        <iframe
+          key={src}
+          src={src}
+          title="Vista web"
+          className="min-h-0 flex-1 border-0 bg-white"
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-[#0d0d10] text-sm text-zinc-400">
+          <HugeiconsIcon icon={Loading03Icon} size={28} className="animate-spin text-indigo-400" />
+          <div>Iniciando servidor en {url}…</div>
+          <div className="text-xs text-zinc-600">
+            Esperando a que el puerto responda{waited > 0 ? ` · ${waited}s` : ""} — se cargará solo.
+          </div>
+          <button
+            type="button"
+            onClick={() => setReady(true)}
+            className="mt-1 rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          >
+            Cargar ahora
+          </button>
+        </div>
+      )}
 
       {showConsole && (
         <div className="flex h-44 shrink-0 flex-col border-t border-zinc-800 bg-[#0d0d10]">
@@ -164,7 +209,7 @@ export default function WebView({
         </button>
         <span className="truncate">{showConsole ? "vía proxy (sin HMR)" : url}</span>
         <span className="ml-auto text-zinc-600">
-          Si no carga, espera a que el servidor arranque (pestaña Terminal) y recarga.
+          {ready ? "Espera el arranque del servidor y se carga solo." : "Esperando al servidor…"}
         </span>
       </div>
     </div>

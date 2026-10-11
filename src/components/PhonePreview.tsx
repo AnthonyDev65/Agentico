@@ -405,11 +405,7 @@ export default function PhonePreview({
           >
             <div
               className="absolute inset-x-0 bottom-0 overflow-hidden"
-              style={{
-                top: `${topInset}%`,
-                borderTopLeftRadius: Math.round(radius * 0.7),
-                borderTopRightRadius: Math.round(radius * 0.7),
-              }}
+              style={{ top: `${topInset}%` }}
             >
               <iframe
                 ref={iframeRef}

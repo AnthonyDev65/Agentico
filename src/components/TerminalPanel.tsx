@@ -242,6 +242,7 @@ export default function TerminalPanel({
   const onRun = async () => {
     if (!effectiveCmd) return;
     await runInShell(effectiveCmd);
+    setReloadKey((k) => k + 1); // re-sondea el puerto en la vista web
     setWebActivated(true);
     setView("web");
   };
