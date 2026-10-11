@@ -405,10 +405,12 @@ export default function PhonePreview({
               tabIndex={-1}
               sandbox="allow-scripts allow-same-origin allow-forms"
               style={{
+                // Tamaño real (de teléfono) para que la página tenga layout y
+                // elementFromPoint encuentre el fondo real. Oculta y fuera de pantalla.
                 position: "absolute",
-                width: 1,
-                height: 1,
-                left: -9999,
+                width: 390,
+                height: 844,
+                left: -99999,
                 top: 0,
                 opacity: 0,
                 pointerEvents: "none",
