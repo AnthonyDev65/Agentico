@@ -848,6 +848,114 @@ fn package_info(path: String) -> PackageInfo {
     }
 }
 
+// ───────────────────────── Proyectos .NET ─────────────────────────
+
+#[derive(Serialize)]
+struct DotnetInfo {
+    has_project: bool,
+    project_file: Option<String>,
+    name: Option<String>,
+    target_framework: Option<String>,
+    output_type: Option<String>,
+    kind: String, // winforms | wpf | console | web | lib | unknown
+    restored: bool,
+}
+
+fn find_csproj(base: &Path) -> Option<PathBuf> {
+    let ignore = ["bin", "obj", "node_modules", ".git", ".vs"];
+    // Nivel raíz.
+    let mut subdirs = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(base) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("csproj") {
+                return Some(p);
+            }
+            if p.is_dir() {
+                let n = p.file_name().and_then(|x| x.to_str()).unwrap_or("");
+                if !ignore.contains(&n) {
+                    subdirs.push(p);
+                }
+            }
+        }
+    }
+    // Un nivel más abajo (solución con proyecto en subcarpeta).
+    for d in subdirs {
+        if let Ok(rd) = std::fs::read_dir(&d) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|x| x.to_str()) == Some("csproj") {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn xml_tag(xml: &str, tag: &str) -> Option<String> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let s = xml.find(&open)? + open.len();
+    let rest = &xml[s..];
+    let e = rest.find(&close)?;
+    Some(rest[..e].trim().to_string())
+}
+fn xml_true(xml: &str, tag: &str) -> bool {
+    xml_tag(xml, tag).map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false)
+}
+
+#[tauri::command]
+fn dotnet_info(path: String) -> DotnetInfo {
+    let none = || DotnetInfo {
+        has_project: false,
+        project_file: None,
+        name: None,
+        target_framework: None,
+        output_type: None,
+        kind: "unknown".into(),
+        restored: false,
+    };
+    let base = Path::new(&path);
+    let csproj = match find_csproj(base) {
+        Some(p) => p,
+        None => return none(),
+    };
+    let xml = std::fs::read_to_string(&csproj).unwrap_or_default();
+    let tfm = xml_tag(&xml, "TargetFramework").or_else(|| xml_tag(&xml, "TargetFrameworks"));
+    let out = xml_tag(&xml, "OutputType");
+    let sdk_web = xml
+        .lines()
+        .take(6)
+        .any(|l| l.contains("Sdk=\"") && l.contains(".Web"));
+    let kind = if xml_true(&xml, "UseWPF") {
+        "wpf"
+    } else if xml_true(&xml, "UseWindowsForms") {
+        "winforms"
+    } else if sdk_web {
+        "web"
+    } else if out.as_deref() == Some("WinExe") {
+        "winforms"
+    } else if out.as_deref() == Some("Exe") {
+        "console"
+    } else if out.as_deref() == Some("Library") {
+        "lib"
+    } else {
+        "unknown"
+    };
+    let dir = csproj.parent().unwrap_or(base);
+    let restored = dir.join("obj").join("project.assets.json").exists();
+    DotnetInfo {
+        has_project: true,
+        project_file: Some(csproj.to_string_lossy().to_string()),
+        name: csproj.file_stem().map(|s| s.to_string_lossy().to_string()),
+        target_framework: tfm,
+        output_type: out,
+        kind: kind.to_string(),
+        restored,
+    }
+}
+
 // ───────────────────────── Filesystem (editor + árbol) ─────────────────────────
 
 #[derive(Serialize)]
@@ -1714,6 +1822,24 @@ fn create_project(
         return Err("ya existe una carpeta con ese nombre".into());
     }
 
+    // Plantillas .NET: `dotnet new <tpl> -n <name> -o <name>`.
+    if let Some(tpl) = preset.strip_prefix("dotnet-") {
+        run_cmd_streamed(
+            &app,
+            &id,
+            &parent_dir,
+            "dotnet",
+            &["new", tpl, "-n", &name, "-o", &name],
+        )?;
+        let proj_str = proj.to_string_lossy().to_string();
+        let _ = run_cmd_streamed(&app, &id, &proj_str, "dotnet", &["restore"]);
+        let _ = app.emit(
+            "create://log",
+            CreateLog { id: id.clone(), line: "✓ Proyecto .NET listo".into() },
+        );
+        return Ok(proj_str);
+    }
+
     let mut libs = libs.unwrap_or_default();
     let wants_tailwind = libs.iter().any(|l| l == "tailwindcss");
     let is_vite = preset.starts_with("vite-");
@@ -2278,6 +2404,7 @@ pub fn run() {
             projects_save,
             project_icon,
             package_info,
+            dotnet_info,
             fs_list,
             fs_list_all,
             fs_read,

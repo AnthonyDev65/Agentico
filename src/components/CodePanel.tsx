@@ -17,6 +17,8 @@ import { css, cssLanguage } from "@codemirror/lang-css";
 import { markdown } from "@codemirror/lang-markdown";
 import { python, pythonLanguage } from "@codemirror/lang-python";
 import { rust, rustLanguage } from "@codemirror/lang-rust";
+import { StreamLanguage } from "@codemirror/language";
+import { csharp } from "@codemirror/legacy-modes/mode/clike";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, SourceCodeIcon, EyeIcon } from "@hugeicons/core-free-icons";
 import MDEditor from "@uiw/react-md-editor";
@@ -124,6 +126,20 @@ const RS_SNIPPETS: Snip[] = [
   { label: "println!", type: "function", apply: 'println!("");' },
   { label: "match", type: "keyword", apply: "match  {\n    \n}" },
 ];
+const CS_SNIPPETS: Snip[] = [
+  { label: "Console.WriteLine", type: "function", apply: 'Console.WriteLine();' },
+  { label: "public", type: "keyword" },
+  { label: "private", type: "keyword" },
+  { label: "class", type: "keyword", apply: "class Name\n{\n    \n}" },
+  { label: "void", type: "keyword" },
+  { label: "using", type: "keyword", apply: "using ;" },
+  { label: "namespace", type: "keyword", apply: "namespace Name;" },
+  { label: "foreach", type: "keyword", apply: "foreach (var item in collection)\n{\n    \n}" },
+  { label: "if", type: "keyword", apply: "if ()\n{\n    \n}" },
+  { label: "var", type: "keyword" },
+  { label: "async", type: "keyword" },
+  { label: "await", type: "keyword" },
+];
 
 function withWords(support: Extension, lang: any, snippets: Snip[]): Extension[] {
   return [support, lang.data.of({ autocomplete: sourceFor(snippets) })];
@@ -160,6 +176,17 @@ function langFor(name: string): Extension[] {
       return withWords(python(), pythonLanguage, PY_SNIPPETS);
     case "rs":
       return withWords(rust(), rustLanguage, RS_SNIPPETS);
+    case "cs": {
+      const l = StreamLanguage.define(csharp);
+      return withWords(l, l, CS_SNIPPETS);
+    }
+    case "xaml":
+    case "csproj":
+    case "props":
+    case "targets":
+    case "xml":
+    case "config":
+      return withWords(html(), htmlLanguage, HTML_SNIPPETS);
     default:
       return [];
   }

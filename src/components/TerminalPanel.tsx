@@ -33,7 +33,7 @@ import {
   siRailway,
 } from "simple-icons";
 import { ClaudeLogo } from "@/components/ClaudeLogo";
-import type { Project, PackageInfo } from "@/components/Workspace";
+import type { Project, PackageInfo, DotnetInfo } from "@/components/Workspace";
 import TerminalView from "@/TerminalView";
 import WebView from "@/components/WebView";
 import CodePanel from "@/components/CodePanel";
@@ -123,6 +123,7 @@ const CAT_GROUPS = [...new Set(CATALOG.map((c) => c.group))];
 export default function TerminalPanel({
   project,
   pkg,
+  dotnet,
   port,
   onPortChange,
   phoneMode,
@@ -132,6 +133,7 @@ export default function TerminalPanel({
 }: {
   project: Project;
   pkg: PackageInfo | null;
+  dotnet: DotnetInfo | null;
   port: number;
   onPortChange: (p: number) => void;
   phoneMode: boolean;
@@ -265,6 +267,25 @@ export default function TerminalPanel({
     ? `${commandFor(pkg.manager, pkg.build_script)}`
     : "sin script build en package.json";
 
+  // ── .NET ──
+  const [dotnetRestored, setDotnetRestored] = useState(false);
+  const isDotnet = !!dotnet?.has_project;
+  const needsRestore = isDotnet && !dotnet.restored && !dotnetRestored;
+  const dotnetDesktop = dotnet?.kind === "winforms" || dotnet?.kind === "wpf";
+  const onDotnetRun = async () => {
+    setView("terminal");
+    await runInShell("dotnet run");
+  };
+  const onDotnetBuild = async () => {
+    setView("terminal");
+    await runInShell("dotnet build");
+  };
+  const onDotnetRestore = async () => {
+    setDotnetRestored(true);
+    setView("terminal");
+    await runInShell("dotnet restore");
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Barra de pestañas + acciones */}
@@ -356,6 +377,17 @@ export default function TerminalPanel({
               <span className="truncate">Instalar dependencias</span>
             </button>
           )}
+          {needsRestore && (
+            <button
+              type="button"
+              onClick={onDotnetRestore}
+              title="dotnet restore"
+              className="flex min-w-0 items-center gap-1.5 rounded-md bg-amber-600/90 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-600"
+            >
+              <HugeiconsIcon icon={PackageReceiveIcon} size={14} className="shrink-0" />
+              <span className="truncate">Restaurar (.NET)</span>
+            </button>
+          )}
           {view === "web" && (
             <div className="mr-1 flex items-center gap-1 text-[11px] text-zinc-500">
               <span>localhost:</span>
@@ -367,24 +399,41 @@ export default function TerminalPanel({
               />
             </div>
           )}
-          <RunButton
-            scripts={pkg?.scripts ?? []}
-            manager={pkg?.manager ?? "npm"}
-            cmd={effectiveCmd}
-            custom={customCmds}
-            disabled={!effectiveCmd}
-            onSelect={selectRun}
-            onRun={onRun}
-            onAddCustom={addCustomCmd}
-            onRemoveCustom={removeCustomCmd}
-          />
-          <ActionBtn
-            onClick={onBuild}
-            icon={Package01Icon}
-            label="Compilar"
-            title={buildHint}
-            disabled={!pkg?.build_script}
-          />
+          {pkg?.has_package && (
+            <>
+              <RunButton
+                scripts={pkg?.scripts ?? []}
+                manager={pkg?.manager ?? "npm"}
+                cmd={effectiveCmd}
+                custom={customCmds}
+                disabled={!effectiveCmd}
+                onSelect={selectRun}
+                onRun={onRun}
+                onAddCustom={addCustomCmd}
+                onRemoveCustom={removeCustomCmd}
+              />
+              <ActionBtn
+                onClick={onBuild}
+                icon={Package01Icon}
+                label="Compilar"
+                title={buildHint}
+                disabled={!pkg?.build_script}
+              />
+            </>
+          )}
+          {isDotnet && (
+            <>
+              <button
+                type="button"
+                onClick={onDotnetRun}
+                title={dotnetDesktop ? "dotnet run — abre la ventana nativa" : "dotnet run"}
+                className="flex items-center gap-1.5 rounded-md bg-emerald-600/90 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-600"
+              >
+                <HugeiconsIcon icon={PlayIcon} size={14} /> Ejecutar
+              </button>
+              <ActionBtn onClick={onDotnetBuild} icon={Package01Icon} label="Compilar" title="dotnet build" />
+            </>
+          )}
 
           <div className="mx-1 h-5 w-px bg-zinc-800" />
 

@@ -20,6 +20,16 @@ export type PackageInfo = {
   port: number | null;
 };
 
+export type DotnetInfo = {
+  has_project: boolean;
+  project_file: string | null;
+  name: string | null;
+  target_framework: string | null;
+  output_type: string | null;
+  kind: string; // winforms | wpf | console | web | lib | unknown
+  restored: boolean;
+};
+
 function initialChatWidth(): number {
   const saved = Number(localStorage.getItem("agentico.chatWidth"));
   return saved && saved >= 320 ? saved : 440;
@@ -51,6 +61,7 @@ export default function Workspace({ project }: { project: Project }) {
   });
   const savedPortRef = useRef<boolean>(!!localStorage.getItem(portKey));
   const [pkg, setPkg] = useState<PackageInfo | null>(null);
+  const [dotnet, setDotnet] = useState<DotnetInfo | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -60,6 +71,11 @@ export default function Workspace({ project }: { project: Project }) {
         if (!savedPortRef.current && info.port) setPort(info.port);
       } catch {
         /* sin package.json */
+      }
+      try {
+        setDotnet(await invoke<DotnetInfo>("dotnet_info", { path: project.path }));
+      } catch {
+        /* sin proyecto .NET */
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,6 +149,7 @@ export default function Workspace({ project }: { project: Project }) {
         <TerminalPanel
           project={project}
           pkg={pkg}
+          dotnet={dotnet}
           port={port}
           onPortChange={changePort}
           phoneMode={phoneMode}

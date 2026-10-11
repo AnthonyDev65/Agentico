@@ -25,6 +25,7 @@ import {
   siJavascript,
   siNextdotjs,
   siAstro,
+  siDotnet,
 } from "simple-icons";
 import { ClaudeLogo } from "@/components/ClaudeLogo";
 import type { Project } from "@/components/Workspace";
@@ -41,6 +42,9 @@ const PRESETS = [
   { id: "vite-vanilla-ts", name: "Vanilla", sub: "Vite · TS", icon: siJavascript },
   { id: "next", name: "Next.js", sub: "React SSR", icon: siNextdotjs },
   { id: "astro", name: "Astro", sub: "Content", icon: siAstro },
+  { id: "dotnet-console", name: "C# Console", sub: ".NET", icon: siDotnet },
+  { id: "dotnet-winforms", name: "WinForms", sub: ".NET · Windows", icon: siDotnet },
+  { id: "dotnet-wpf", name: "WPF", sub: ".NET · Windows", icon: siDotnet },
 ];
 
 function logoColor(hex: string): string {
@@ -395,7 +399,14 @@ function NewProjectView({
         />
         <LocationPicker dir={dir} onPick={setDir} />
 
-        <div>
+        {preset?.startsWith("dotnet-") ? (
+          <div className="max-w-sm rounded-md border border-zinc-800 bg-[#1a1a1a] p-3 text-[11px] leading-relaxed text-zinc-500">
+            En .NET las dependencias se gestionan con <span className="text-zinc-300">NuGet</span>. El
+            proyecto se crea con <span className="font-mono text-zinc-300">dotnet new</span> y se
+            restaura automáticamente.
+          </div>
+        ) : (
+          <div>
           <div className="mb-2 text-xs text-zinc-500">Librerías (opcional)</div>
           <div className="mb-2 flex flex-wrap gap-1.5">
             {COMMON_LIBS.map((n) => (
@@ -461,7 +472,8 @@ function NewProjectView({
               Tailwind se configurará automáticamente (Vite) o vía el scaffolder (Next).
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         <button
           type="button"
