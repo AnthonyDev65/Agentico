@@ -9,6 +9,7 @@ import {
   ZoomInIcon,
   ZoomOutIcon,
 } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
 
 const DEVICE_SVG = "/devices/iphone-17-promax-deepblue.svg";
 // Proxy del backend (esquema registrado en Rust). En Windows Tauri lo mapea a
@@ -145,88 +146,102 @@ export default function PhonePreview({
   const [zoom, setZoom] = useState(100);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [pageBg, setPageBg] = useState("#000000");
-  const [probeSrc, setProbeSrc] = useState<string | null>(null);
+  const [probeDoc, setProbeDoc] = useState<string | null>(null);
+  const [manualBg, setManualBg] = useState<string | null>(null); // null = automático
   const [time, setTime] = useState(nowTime);
 
   const paneRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const probeRef = useRef<HTMLIFrameElement>(null);
 
   const url = `http://localhost:${port}`;
 
-  // Detección del color de fondo. Todo pasa por el proxy del backend
-  // (esquema agproxy), que añade CORS e inyecta un script en el HTML: así la
-  // sonda viva ejecuta el JS real de la página y reporta el fondo por
-  // postMessage, incluso cuando se define en runtime (CSS-in-JS). Además se
-  // hace una detección estática rápida (theme-color / CSS) como primer valor.
+  // Lee el fondo computado de la sonda (srcDoc, mismo origen → legible).
+  // Busca el elemento real detrás de la barra de estado (centro-arriba) y sube
+  // por el DOM hasta un fondo no transparente; cae a body/html.
+  const readProbeBg = () => {
+    try {
+      const d = probeRef.current?.contentDocument;
+      const win = probeRef.current?.contentWindow;
+      if (!d) return;
+      const gcs = (el: Element) => (win ? win.getComputedStyle(el) : getComputedStyle(el));
+      let found = "";
+      const w = win?.innerWidth || 390;
+      for (const y of [6, 48, 120, 300]) {
+        let el: Element | null = d.elementFromPoint ? d.elementFromPoint(Math.floor(w / 2), y) : null;
+        let depth = 0;
+        while (el && depth++ < 18) {
+          const c = gcs(el).backgroundColor;
+          if (isOpaque(c)) {
+            found = c;
+            break;
+          }
+          el = el.parentElement;
+        }
+        if (found) break;
+      }
+      if (!found && d.body) {
+        const c = gcs(d.body).backgroundColor;
+        if (isOpaque(c)) found = c;
+      }
+      if (!found && d.documentElement) {
+        const c = gcs(d.documentElement).backgroundColor;
+        if (isOpaque(c)) found = c;
+      }
+      if (found) setPageBg(found);
+    } catch {
+      /* no legible */
+    }
+  };
+
+  // Monta una sonda oculta con el HTML real de la página (srcDoc = mismo origen,
+  // así se puede leer) y <base> al dev server para que sus hojas de estilo
+  // apliquen aunque sean de otro origen. El HTML se obtiene vía proxy (con CORS)
+  // o directo como respaldo.
   useEffect(() => {
     let cancel = false;
-    setProbeSrc(null);
+    setProbeDoc(null);
     (async () => {
+      let html = "";
       try {
         await invoke("set_proxy_port", { port });
+        const r = await fetch(`${PROXY}/?agbg=${reloadKey}`, { cache: "no-store" });
+        if (r.ok) html = await r.text();
       } catch {
-        /* backend sin proxy */
+        /* proxy no disponible */
       }
-
-      try {
-        const res = await fetch(`${PROXY}/?agstatic=${reloadKey}`, { cache: "no-store" });
-        if (res.ok) {
-          const html = await res.text();
-
-          const tc =
-            html.match(/<meta[^>]+name=["']theme-color["'][^>]*content=["']([^"']+)["']/i) ||
-            html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*name=["']theme-color["']/i);
-          if (tc && isOpaque(tc[1].trim()) && !cancel) setPageBg(tc[1].trim());
-
-          const inlineCss = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
-            .map((m) => m[1])
-            .join("\n");
-          const bodyInline =
-            (html.match(/<body[^>]*style=["']([^"']*)["']/i) || [])[1] ||
-            (html.match(/<html[^>]*style=["']([^"']*)["']/i) || [])[1] ||
-            "";
-          const fromInline = bgFromCss(inlineCss) || bgFromCss(`body{${bodyInline}}`);
-          if (fromInline && !cancel) setPageBg(fromInline);
-
-          const links = [...html.matchAll(/<link[^>]+href=["']([^"']+)["'][^>]*>/gi)]
-            .filter((m) => /stylesheet/i.test(m[0]) || /\.css(\?|$)/i.test(m[1]))
-            .map((m) => new URL(m[1], `${PROXY}/`).href)
-            .slice(0, 6);
-          for (const href of links) {
-            if (cancel) break;
-            try {
-              const cssRes = await fetch(href, { cache: "no-store" });
-              if (!cssRes.ok) continue;
-              const col = bgFromCss(await cssRes.text());
-              if (col && !cancel) {
-                setPageBg(col);
-                break;
-              }
-            } catch {
-              /* css inaccesible */
-            }
-          }
+      if (!html) {
+        try {
+          const r = await fetch(`${url}/?agbg=${reloadKey}`, { cache: "no-store" });
+          if (r.ok) html = await r.text();
+        } catch {
+          /* dev server apagado o sin CORS */
         }
-      } catch {
-        /* servidor apagado */
       }
+      if (!html || cancel) return;
 
-      if (!cancel) setProbeSrc(`${PROXY}/?agprobe=${reloadKey}`);
+      // Pista rápida: theme-color y <style> embebidos.
+      const tc =
+        html.match(/<meta[^>]+name=["']theme-color["'][^>]*content=["']([^"']+)["']/i) ||
+        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*name=["']theme-color["']/i);
+      if (tc && isOpaque(tc[1].trim())) setPageBg(tc[1].trim());
+      const inlineCss = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
+        .map((m) => m[1])
+        .join("\n");
+      const fromCss = bgFromCss(inlineCss);
+      if (fromCss) setPageBg(fromCss);
+
+      // Sonda: <base> al dev server → el CSS externo (cross-origin) aplica.
+      const base = `<base href="${url}/"><style>html,body{min-height:100%!important}</style>`;
+      let doc = html;
+      if (/<head[^>]*>/i.test(doc)) doc = doc.replace(/<head[^>]*>/i, (m) => m + base);
+      else doc = `<head>${base}</head>` + doc;
+      if (!cancel) setProbeDoc(doc);
     })();
     return () => {
       cancel = true;
     };
   }, [port, reloadKey]);
-
-  // Recibe el color de fondo real que reporta la sonda viva.
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      const c = (e.data as { __agproxyBg?: unknown })?.__agproxyBg;
-      if (typeof c === "string" && isOpaque(c)) setPageBg(c);
-    };
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
 
   // Reloj de la barra de estado.
   useEffect(() => {
@@ -326,6 +341,31 @@ export default function PhonePreview({
           </button>
         </div>
 
+        {/* Color de la barra de estado: Auto (detectado) o fijo */}
+        <div className="flex items-center gap-1 text-[11px] text-zinc-500" title="Color de la barra de estado">
+          <span>barra:</span>
+          <label className="flex cursor-pointer items-center">
+            <input
+              type="color"
+              value={manualBg ?? "#ffffff"}
+              onChange={(e) => setManualBg(e.target.value)}
+              className="size-4 cursor-pointer appearance-none rounded-sm border-0 bg-transparent p-0"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => setManualBg(null)}
+            className={cn(
+              "rounded px-1.5 py-0.5",
+              manualBg
+                ? "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                : "bg-zinc-700 text-white",
+            )}
+          >
+            Auto
+          </button>
+        </div>
+
         <div className="ml-auto flex items-center gap-2 text-[11px] text-zinc-500">
           <span>localhost:</span>
           <input
@@ -361,7 +401,7 @@ export default function PhonePreview({
               real de la página para que la franja de la barra de estado combine. */}
           <div
             className="absolute overflow-hidden"
-            style={{ ...screenStyle, background: pageBg }}
+            style={{ ...screenStyle, background: manualBg ?? pageBg }}
           >
             <div
               className="absolute inset-x-0 bottom-0 overflow-hidden"
@@ -391,22 +431,27 @@ export default function PhonePreview({
               />
             </div>
             {/* Barra de estado (hora + batería) sobre la franja de la isla */}
-            {!landscape && <StatusBar bg={pageBg} time={time} heightPct={topInset} />}
+            {!landscape && <StatusBar bg={manualBg ?? pageBg} time={time} heightPct={topInset} />}
           </div>
 
-          {/* Sonda viva (oculta): corre el JS real de la página vía proxy y
-              reporta el color de fondo por postMessage. */}
-          {probeSrc && (
+          {/* Sonda oculta (srcDoc, mismo origen): aplica el CSS real de la
+              página y leemos el fondo computado directamente. */}
+          {probeDoc && (
             <iframe
-              key={probeSrc}
-              src={probeSrc}
+              ref={probeRef}
+              key={`${port}-${reloadKey}`}
+              srcDoc={probeDoc}
               title="probe"
               aria-hidden
               tabIndex={-1}
-              sandbox="allow-scripts allow-same-origin allow-forms"
+              sandbox="allow-same-origin"
+              onLoad={() => {
+                readProbeBg();
+                [200, 600, 1200, 2500, 4000].forEach((t) => setTimeout(readProbeBg, t));
+              }}
               style={{
-                // Tamaño real (de teléfono) para que la página tenga layout y
-                // elementFromPoint encuentre el fondo real. Oculta y fuera de pantalla.
+                // Tamaño real (de teléfono) para que haya layout y
+                // elementFromPoint encuentre el fondo real. Oculta, fuera de pantalla.
                 position: "absolute",
                 width: 390,
                 height: 844,
