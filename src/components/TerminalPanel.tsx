@@ -5,6 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
   ComputerTerminal01Icon,
+  CheckListIcon,
   GlobalIcon,
   PlayIcon,
   Package01Icon,
@@ -37,6 +38,7 @@ import type { Project, PackageInfo } from "@/components/Workspace";
 import TerminalView from "@/TerminalView";
 import WebView from "@/components/WebView";
 import CodePanel from "@/components/CodePanel";
+import TasksPanel, { useTasksFiles } from "@/components/TasksPanel";
 import GitPanel from "@/components/GitPanel";
 import SkillsPanel from "@/components/SkillsPanel";
 import LibrariesPanel from "@/components/LibrariesPanel";
@@ -143,6 +145,12 @@ export default function TerminalPanel({
   const shellId = `${project.path}::shell`;
 
   const [view, setView] = useState<View>("code");
+  // Pestaña «Tareas»: solo si hay .tasks en la raíz o en plan/.
+  const tasksFiles = useTasksFiles(project.path);
+  const pendingTasks = tasksFiles.reduce((n, f) => n + f.pending, 0);
+  useEffect(() => {
+    if (view === "tasks" && tasksFiles.length === 0) setView("code");
+  }, [view, tasksFiles.length]);
   const [webActivated, setWebActivated] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -269,10 +277,22 @@ export default function TerminalPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Barra de pestañas + acciones */}
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-zinc-800 bg-zinc-900/40 px-2">
+      <div className="@container flex h-9 shrink-0 items-center gap-1 border-b border-zinc-800 bg-zinc-900/40 px-2">
+        {/* Pestañas: se encogen (solo icono) y si no caben se desplazan; nunca invaden las acciones */}
+        <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         <ViewTab active={view === "code"} onClick={() => setView("code")} label="Código">
           <HugeiconsIcon icon={SourceCodeIcon} size={14} />
         </ViewTab>
+        {tasksFiles.length > 0 && (
+          <ViewTab
+            active={view === "tasks"}
+            onClick={() => setView("tasks")}
+            label="Tareas"
+            badge={pendingTasks > 0 ? pendingTasks : undefined}
+          >
+            <HugeiconsIcon icon={CheckListIcon} size={14} className="text-emerald-400" />
+          </ViewTab>
+        )}
         <ViewTab active={view === "git"} onClick={() => setView("git")} label="Git">
           <HugeiconsIcon icon={GitBranchIcon} size={14} />
         </ViewTab>
@@ -309,14 +329,21 @@ export default function TerminalPanel({
             onClick={() => activateTab(t.id)}
             title={t.command ?? t.url}
             className={cn(
-              "group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+              "group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
               view === `tab:${t.id}`
                 ? "bg-zinc-800 text-zinc-100"
                 : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200",
             )}
           >
             <TabLogo logo={t.logo} kind={t.kind} />
-            <span className="max-w-[96px] truncate">{t.label}</span>
+            <span
+              className={cn(
+                "max-w-[96px] truncate",
+                view !== `tab:${t.id}` && "hidden @min-[1150px]:inline",
+              )}
+            >
+              {t.label}
+            </span>
             <button
               type="button"
               onClick={(e) => {
@@ -324,7 +351,7 @@ export default function TerminalPanel({
                 closeTab(t.id);
               }}
               aria-label="Cerrar pestaña"
-              className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity hover:bg-zinc-700 group-hover:opacity-70"
+              className="-mr-0.5 hidden size-4 shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100 group-hover:flex"
             >
               <HugeiconsIcon icon={Cancel01Icon} size={11} />
             </button>
@@ -341,11 +368,12 @@ export default function TerminalPanel({
         >
           <HugeiconsIcon icon={Add01Icon} size={16} />
         </button>
+        </div>
         {addOpen && (
           <AddServiceMenu anchor={addBtnRef.current} onAdd={addTab} onClose={() => setAddOpen(false)} />
         )}
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {needsInstall && (
             <button
               type="button"
@@ -354,12 +382,12 @@ export default function TerminalPanel({
               className="flex min-w-0 items-center gap-1.5 rounded-md bg-amber-600/90 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-600"
             >
               <HugeiconsIcon icon={PackageReceiveIcon} size={14} className="shrink-0" />
-              <span className="truncate">Instalar dependencias</span>
+              <span className="hidden truncate @min-[760px]:inline">Instalar dependencias</span>
             </button>
           )}
           {view === "web" && (
             <div className="mr-1 flex items-center gap-1 text-[11px] text-zinc-500">
-              <span>localhost:</span>
+              <span className="hidden @min-[860px]:inline">localhost:</span>
               <input
                 type="number"
                 value={port}
@@ -420,33 +448,40 @@ export default function TerminalPanel({
 
       {/* Vistas (todas montadas; se ocultan las inactivas para mantener vivas las sesiones) */}
       <div className="relative min-h-0 flex-1">
-        <div className={cn("absolute inset-0", view === "code" ? "" : "hidden")}>
+        {/* La vista activa va con z-10: las inactivas siguen montadas (opacity-0) y sus
+            iframes de otro origen pueden robar la rueda del ratón en WebView2. */}
+        <div className={cn("absolute inset-0", view === "code" ? "z-10" : "hidden")}>
           <CodePanel project={project} />
         </div>
+        {view === "tasks" && tasksFiles.length > 0 && (
+          <div className="absolute inset-0 z-10">
+            <TasksPanel projectPath={project.path} files={tasksFiles} />
+          </div>
+        )}
         {view === "git" && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 z-10">
             <GitPanel project={project} />
           </div>
         )}
         {view === "skills" && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 z-10">
             <SkillsPanel project={project} />
           </div>
         )}
         {view === "libs" && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 z-10">
             <LibrariesPanel project={project} />
           </div>
         )}
         {view === "mcp" && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 z-10">
             <MCPPanel project={project} />
           </div>
         )}
         <div
           className={cn(
             "absolute inset-0 flex",
-            view === "claude" ? "" : "pointer-events-none opacity-0",
+            view === "claude" ? "z-10" : "pointer-events-none opacity-0",
           )}
         >
           <TerminalView sessionId={claudeId} cwd={project.path} kind="claude" />
@@ -454,7 +489,7 @@ export default function TerminalPanel({
         <div
           className={cn(
             "absolute inset-0 flex",
-            view === "terminal" ? "" : "pointer-events-none opacity-0",
+            view === "terminal" ? "z-10" : "pointer-events-none opacity-0",
           )}
         >
           <TerminalView sessionId={shellId} cwd={project.path} kind="shell" />
@@ -465,7 +500,7 @@ export default function TerminalPanel({
           <div
             className={cn(
               "absolute inset-0",
-              view === "web" ? "" : "pointer-events-none opacity-0",
+              view === "web" ? "z-10" : "pointer-events-none opacity-0",
             )}
           >
             <WebView port={port} reloadKey={reloadKey} onReload={() => setReloadKey((k) => k + 1)} />
@@ -480,7 +515,7 @@ export default function TerminalPanel({
                 key={t.id}
                 className={cn(
                   "absolute inset-0 flex",
-                  view === `tab:${t.id}` ? "" : "pointer-events-none opacity-0",
+                  view === `tab:${t.id}` ? "z-10" : "pointer-events-none opacity-0",
                 )}
               >
                 {t.kind === "terminal" ? (
@@ -568,7 +603,8 @@ function RunButton({
         title={cmd || "sin comando"}
         className="flex items-center gap-1.5 bg-emerald-600/90 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-600 disabled:bg-zinc-800 disabled:text-zinc-500"
       >
-        <HugeiconsIcon icon={PlayIcon} size={14} /> Ejecutar
+        <HugeiconsIcon icon={PlayIcon} size={14} />
+        <span className="hidden @min-[640px]:inline">Ejecutar</span>
       </button>
       <button
         ref={btnRef}
@@ -789,24 +825,32 @@ function ViewTab({
   active,
   onClick,
   label,
+  badge,
   children,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
+  badge?: number;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={label}
+      aria-label={label}
       className={cn(
-        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+        "flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors @min-[1150px]:px-2.5",
         active ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200",
       )}
     >
       {children}
-      {label}
+      {/* En anchos estrechos solo se ve el icono (salvo la pestaña activa) */}
+      <span className={cn(!active && "hidden @min-[1150px]:inline")}>{label}</span>
+      {badge != null && (
+        <span className="rounded bg-emerald-500/15 px-1 text-[10px] tabular-nums text-emerald-300">{badge}</span>
+      )}
     </button>
   );
 }
@@ -840,7 +884,7 @@ function ActionBtn({
       )}
     >
       <HugeiconsIcon icon={icon} size={14} />
-      {label}
+      <span className="hidden @min-[640px]:inline">{label}</span>
     </button>
   );
 }

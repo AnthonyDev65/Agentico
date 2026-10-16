@@ -12,7 +12,14 @@ import {
   Add01Icon,
   MinusSignIcon,
   Delete02Icon,
+  Settings01Icon,
+  Cancel01Icon,
+  CloudDownloadIcon,
 } from "@hugeicons/core-free-icons";
+import GitSettings from "@/components/GitSettings";
+import SideDrawer from "@/components/SideDrawer";
+import { DiffView } from "@/components/GitDiff";
+import { BranchesView, HistoryView } from "@/components/GitHistory";
 import type { Project } from "@/components/Workspace";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +40,13 @@ export default function GitPanel({ project }: { project: Project }) {
   const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirm, setConfirm] = useState<{ file: string; untracked: boolean } | "all" | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [tab, setTab] = useState<"changes" | "history" | "branches">("changes");
+  const [histKey, setHistKey] = useState(0); // refresca historial/ramas tras acciones
+  const [focusHash, setFocusHash] = useState<string | null>(null);
 
   const refresh = async () => {
+    setHistKey((k) => k + 1);
     try {
       setStatus(await invoke<GitStatus>("git_status", { path: project.path }));
     } catch {
@@ -109,9 +121,13 @@ export default function GitPanel({ project }: { project: Project }) {
 
   if (status && !status.is_repo) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-zinc-600">
-        Este proyecto no es un repositorio git.
-      </div>
+      <InitRepo
+        projectPath={project.path}
+        onCreated={(summary) => {
+          setNote(summary); // se ve en el panel normal (p.ej. aviso de user.name)
+          refresh();
+        }}
+      />
     );
   }
 
@@ -120,36 +136,91 @@ export default function GitPanel({ project }: { project: Project }) {
   const changes = files.filter((f) => f.y !== " ");
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* Izquierda: cambios + commit */}
-      <div className="flex w-80 shrink-0 flex-col border-r border-zinc-800">
-        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-zinc-800 px-3 text-xs text-zinc-400">
-          <HugeiconsIcon icon={GitBranchIcon} size={14} />
+    <div className="flex h-full min-h-0 flex-col">
+      {showSettings && (
+        <SideDrawer
+          title="Configurar git"
+          icon={GitBranchIcon}
+          iconClass="text-orange-400"
+          onClose={() => setShowSettings(false)}
+        >
+          <GitSettings />
+        </SideDrawer>
+      )}
+      {/* Barra superior: rama, pestañas y acciones remotas */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-zinc-800 px-3 text-xs text-zinc-400">
+        <button
+          type="button"
+          onClick={() => setTab("branches")}
+          title="Ver y cambiar ramas"
+          className="flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-zinc-800"
+        >
+          <HugeiconsIcon icon={GitBranchIcon} size={14} className="shrink-0 text-indigo-400" />
           <span className="truncate font-medium text-zinc-200">{status?.branch ?? "—"}</span>
           {status && (status.ahead > 0 || status.behind > 0) && (
-            <span className="text-[10px] text-zinc-500">
+            <span className="shrink-0 text-[10px] text-zinc-500">
               ↑{status.ahead} ↓{status.behind}
             </span>
           )}
-          <div className="ml-auto flex items-center gap-0.5">
-            <IconBtn
-              title="Pull"
-              onClick={() => action(() => invoke<string>("git_pull", { path: project.path }))}
+        </button>
+        <div className="flex shrink-0 overflow-hidden rounded-md border border-zinc-800 text-[11px]">
+          {(
+            [
+              ["changes", `Cambios${files.length ? ` · ${files.length}` : ""}`],
+              ["history", "Historial"],
+              ["branches", "Ramas"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setTab(k)}
+              className={cn(
+                "px-2.5 py-0.5 transition-colors",
+                tab === k ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
+              )}
             >
-              <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
-            </IconBtn>
-            <IconBtn
-              title="Push"
-              onClick={() => action(() => invoke<string>("git_push", { path: project.path }))}
-            >
-              <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
-            </IconBtn>
-            <IconBtn title="Refrescar" onClick={refresh}>
-              <HugeiconsIcon icon={Refresh01Icon} size={14} />
-            </IconBtn>
-          </div>
+              {label}
+            </button>
+          ))}
         </div>
+        <div className="ml-auto flex items-center gap-0.5">
+          {loading && <HugeiconsIcon icon={Refresh01Icon} size={13} className="mr-1 animate-spin text-zinc-500" />}
+          <IconBtn
+            title="Fetch (traer ramas y commits remotos)"
+            onClick={() => action(() => invoke<string>("git_fetch", { path: project.path }))}
+          >
+            <HugeiconsIcon icon={CloudDownloadIcon} size={14} />
+          </IconBtn>
+          <IconBtn title="Pull" onClick={() => action(() => invoke<string>("git_pull", { path: project.path }))}>
+            <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
+          </IconBtn>
+          <IconBtn title="Push" onClick={() => action(() => invoke<string>("git_push", { path: project.path }))}>
+            <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
+          </IconBtn>
+          <IconBtn title="Refrescar" onClick={refresh}>
+            <HugeiconsIcon icon={Refresh01Icon} size={14} />
+          </IconBtn>
+          <IconBtn title="Configurar git (identidad y token)" onClick={() => setShowSettings(true)}>
+            <HugeiconsIcon icon={Settings01Icon} size={14} />
+          </IconBtn>
+        </div>
+      </div>
 
+      {note && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+          <pre className="max-h-20 min-w-0 flex-1 overflow-auto whitespace-pre-wrap font-sans">{note}</pre>
+          <button type="button" onClick={() => setNote(null)} aria-label="Cerrar aviso" className="shrink-0 text-zinc-500 hover:text-zinc-200">
+            <HugeiconsIcon icon={Cancel01Icon} size={12} />
+          </button>
+        </div>
+      )}
+
+      <div className="flex min-h-0 flex-1">
+      {tab === "changes" ? (
+      <>
+      {/* Izquierda: cambios + commit */}
+      <div className="flex w-80 shrink-0 flex-col border-r border-zinc-800">
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Section
             title="Staged"
@@ -227,11 +298,6 @@ export default function GitPanel({ project }: { project: Project }) {
           >
             <HugeiconsIcon icon={GitCommitIcon} size={14} /> Commit ({staged.length})
           </button>
-          {note && (
-            <div className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-zinc-900 p-2 text-[10px] text-zinc-400">
-              {note}
-            </div>
-          )}
         </div>
       </div>
 
@@ -244,6 +310,29 @@ export default function GitPanel({ project }: { project: Project }) {
             Selecciona un archivo para ver el diff
           </div>
         )}
+      </div>
+
+      </>
+      ) : tab === "history" ? (
+        <HistoryView
+          projectPath={project.path}
+          refreshKey={histKey}
+          focusHash={focusHash}
+          onNote={setNote}
+          onChanged={refresh}
+        />
+      ) : (
+        <BranchesView
+          projectPath={project.path}
+          refreshKey={histKey}
+          onNote={setNote}
+          onChanged={refresh}
+          onOpenCommit={(h) => {
+            setFocusHash(h);
+            setTab("history");
+          }}
+        />
+      )}
       </div>
 
       {confirm &&
@@ -432,37 +521,87 @@ function StatusBadge({ c }: { c: string }) {
   return <span className={cn("w-3 text-center text-[11px] font-bold", color)}>{c === "?" ? "U" : c}</span>;
 }
 
-function DiffView({ diff, path }: { diff: string; path: string }) {
-  if (!diff.trim()) {
-    return (
-      <div className="p-4 text-sm text-zinc-500">
-        Archivo nuevo sin seguimiento (o sin cambios que mostrar).
-        <div className="mt-1 text-xs text-zinc-600">{path}</div>
-      </div>
-    );
-  }
+// Pantalla para proyectos sin repositorio: crea uno con `git_init`.
+function InitRepo({ projectPath, onCreated }: { projectPath: string; onCreated: (summary: string) => void }) {
+  const [initialCommit, setInitialCommit] = useState(true);
+  const [remote, setRemote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const summary = await invoke<string>("git_init", {
+        path: projectPath,
+        initialCommit,
+        remote: remote.trim() || null,
+      });
+      onCreated(summary);
+    } catch (e) {
+      setError(String(e).includes("not found") || String(e).includes("program not found")
+        ? "No se encontró git. Instálalo desde https://git-scm.com y vuelve a intentarlo."
+        : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <pre className="min-w-full p-3 font-mono text-[12px] leading-[1.5]">
-      {diff.split("\n").map((ln, i) => {
-        const cls =
-          ln.startsWith("+") && !ln.startsWith("+++")
-            ? "text-emerald-400 bg-emerald-500/5"
-            : ln.startsWith("-") && !ln.startsWith("---")
-              ? "text-red-400 bg-red-500/5"
-              : ln.startsWith("@@")
-                ? "text-cyan-400"
-                : ln.startsWith("diff ") ||
-                    ln.startsWith("index ") ||
-                    ln.startsWith("+++") ||
-                    ln.startsWith("---")
-                  ? "text-zinc-500"
-                  : "text-zinc-300";
-        return (
-          <div key={i} className={cn("whitespace-pre-wrap break-all px-1", cls)}>
-            {ln || " "}
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-zinc-800 bg-[#161616] p-5">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-lg bg-orange-500/10">
+            <HugeiconsIcon icon={GitBranchIcon} size={20} className="text-orange-400" />
+          </span>
+          <div>
+            <div className="text-sm font-medium text-zinc-100">Este proyecto no es un repositorio git</div>
+            <div className="text-xs text-zinc-500">Crea uno para guardar versiones de tu código.</div>
           </div>
-        );
-      })}
-    </pre>
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+          <input
+            type="checkbox"
+            checked={initialCommit}
+            onChange={(e) => setInitialCommit(e.target.checked)}
+            className="accent-indigo-500"
+          />
+          Hacer un commit inicial con los archivos actuales
+        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] text-zinc-500">Repositorio remoto (opcional)</span>
+          <input
+            value={remote}
+            onChange={(e) => setRemote(e.target.value)}
+            placeholder="https://github.com/usuario/proyecto.git"
+            spellCheck={false}
+            className="h-8 rounded-md border border-zinc-800 bg-[#0d0d10] px-2.5 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-indigo-500"
+          />
+        </div>
+
+        <div className="text-[11px] leading-relaxed text-zinc-500">
+          Se crea la rama <span className="font-mono text-zinc-400">main</span> y, si no existe, un{" "}
+          <span className="font-mono text-zinc-400">.gitignore</span> que excluye node_modules, builds y archivos .env.
+        </div>
+
+        {error && (
+          <pre className="whitespace-pre-wrap rounded-md border border-amber-900/50 bg-amber-950/30 p-2.5 text-[11px] text-amber-200">
+            {error}
+          </pre>
+        )}
+
+        <button
+          type="button"
+          onClick={create}
+          disabled={busy}
+          className="flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+        >
+          <HugeiconsIcon icon={busy ? Refresh01Icon : Add01Icon} size={15} className={busy ? "animate-spin" : ""} />
+          {busy ? "Creando…" : "Crear repositorio"}
+        </button>
+      </div>
+    </div>
   );
 }

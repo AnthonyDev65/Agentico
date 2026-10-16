@@ -13,7 +13,9 @@ import {
   Loading03Icon,
   Refresh01Icon,
   ComputerTerminal01Icon,
+  GitBranchIcon,
 } from "@hugeicons/core-free-icons";
+import GitSettings from "@/components/GitSettings";
 import { cn } from "@/lib/utils";
 
 type Cmd = [string, string[]];
@@ -71,7 +73,7 @@ const stripAnsi = (s: string) => {
 };
 
 export default function Settings({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"general" | "tools">("tools");
+  const [tab, setTab] = useState<"general" | "tools" | "git">("tools");
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -108,6 +110,9 @@ export default function Settings({ onClose }: { onClose: () => void }) {
             <TabBtn active={tab === "general"} onClick={() => setTab("general")} icon={SlidersHorizontalIcon}>
               General
             </TabBtn>
+            <TabBtn active={tab === "git"} onClick={() => setTab("git")} icon={GitBranchIcon}>
+              Git
+            </TabBtn>
           </div>
           <button
             type="button"
@@ -119,7 +124,17 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          {tab === "tools" ? <ToolsTab /> : <GeneralTab />}
+          {tab === "tools" ? (
+            <ToolsTab />
+          ) : tab === "git" ? (
+            <div className="h-full overflow-y-auto p-5">
+              <div className="mx-auto max-w-2xl">
+                <GitSettings />
+              </div>
+            </div>
+          ) : (
+            <GeneralTab />
+          )}
         </div>
       </div>
     </>,
@@ -334,6 +349,8 @@ function ToolsTab() {
 }
 
 const PERMS = [
+  { value: "agentico-plan", label: "Agentico Plan — planifica con diagramas y tareas" },
+  { value: "agentico-build", label: "Agentico Build — construye el plan escribiendo código" },
   { value: "acceptEdits", label: "Agent — auto-acepta ediciones" },
   { value: "plan", label: "Plan — solo planifica" },
   { value: "bypassPermissions", label: "Full access — permite todo" },

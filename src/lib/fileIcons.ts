@@ -18,6 +18,8 @@ import {
   TextFontIcon,
   Table01Icon,
   Flowchart01Icon,
+  CheckListIcon,
+  PaintBoardIcon,
   ThreeDRotateIcon,
 } from "@hugeicons/core-free-icons";
 
@@ -83,8 +85,27 @@ export function isMermaidFile(name: string): boolean {
   return e === "mmd" || e === "mermaid";
 }
 
+// Listas de tareas de Agentico (checklist Markdown con extensión propia).
+export function isTasksFile(name: string): boolean {
+  return extOf(name) === "tasks";
+}
+
+// Visual System de Agentico (colores, tipografía… en Markdown con vista visual).
+export function isDesignFile(name: string): boolean {
+  return extOf(name) === "design";
+}
+
+// Nombre a mostrar: los archivos propios de Agentico se ven sin extensión
+// («tareas», no «tareas.tasks»; «visual-system», no «visual-system.design»).
+export function displayName(name: string): string {
+  if (isTasksFile(name) || isDesignFile(name)) return name.replace(/\.[^.]+$/, "") || name;
+  return name;
+}
+
 export function fileIcon(name: string): { icon: IconSvgElement; color: string } {
   if (isEnvFile(name)) return { icon: Key01Icon, color: "text-lime-400" };
+  if (isTasksFile(name)) return { icon: CheckListIcon, color: "text-emerald-400" };
+  if (isDesignFile(name)) return { icon: PaintBoardIcon, color: "text-pink-400" };
   if (isAudioFile(name)) return { icon: MusicNote01Icon, color: "text-emerald-400" };
   if (isVideoFile(name)) return { icon: Video01Icon, color: "text-rose-400" };
   if (isFontFile(name)) return { icon: TextFontIcon, color: "text-purple-400" };

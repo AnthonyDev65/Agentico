@@ -28,7 +28,6 @@ textarea,
 [contenteditable="true"],
 .cm-editor,
 .xterm,
-.wmde-markdown,
 .md,
 pre,
 code,
@@ -37,23 +36,38 @@ code,
   -webkit-user-select: text;
 }
 
-/* Scrollbars oscuras y finas */
+/* Scrollbars tipo macOS: pill translúcido, sin flechas, track transparente */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: rgba(148, 148, 163, 0.45) transparent;
 }
 *::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
+}
+/* Sin flechas ni esquinas (lo que ensuciaba en WebView2/Windows) */
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: rgba(148, 148, 163, 0.38);
   border-radius: 9999px;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   background-clip: content-box;
+  min-height: 32px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: rgba(170, 170, 185, 0.6);
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:active {
+  background: rgba(190, 190, 205, 0.75);
   background-clip: content-box;
 }
 
@@ -61,69 +75,6 @@ code,
 .xterm,
 .xterm-viewport {
   height: 100% !important;
-}
-
-/* Editor de markdown (@uiw/react-md-editor) — tema oscuro del IDE */
-.w-md-editor {
-  height: 100% !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  background-color: #121212 !important;
-  color: #e4e4e7 !important;
-  --color-canvas-default: #121212;
-  --color-canvas-subtle: #18181b;
-  --color-border-default: #27272a;
-  --color-border-muted: #27272a;
-  --color-fg-default: #e4e4e7;
-  --color-fg-muted: #a1a1aa;
-  --color-fg-subtle: #71717a;
-  --color-accent-fg: #818cf8;
-  --color-neutral-muted: rgba(113, 113, 122, 0.2);
-}
-.w-md-editor-toolbar {
-  background-color: #18181b !important;
-  border-bottom: 1px solid #27272a !important;
-  padding: 4px 6px !important;
-}
-.w-md-editor-toolbar ul > li > button {
-  color: #a1a1aa !important;
-}
-.w-md-editor-toolbar ul > li > button:hover,
-.w-md-editor-toolbar ul > li > button:focus {
-  color: #fafafa !important;
-  background-color: #27272a !important;
-}
-.w-md-editor-toolbar li.active > button {
-  color: #818cf8 !important;
-  background-color: #27272a !important;
-}
-.w-md-editor-toolbar-divider {
-  background-color: #3f3f46 !important;
-}
-.w-md-editor-content {
-  background-color: #121212 !important;
-}
-.w-md-editor-text-pre,
-.w-md-editor-text-input,
-.w-md-editor-text > .w-md-editor-text-pre > code {
-  color: #e4e4e7 !important;
-  font-family: var(--font-mono) !important;
-}
-.w-md-editor-preview {
-  background-color: #121212 !important;
-  box-shadow: inset 1px 0 0 0 #27272a !important;
-}
-.wmde-markdown {
-  background-color: #121212 !important;
-  color: #e4e4e7 !important;
-  --color-canvas-default: #121212;
-  --color-canvas-subtle: #18181b;
-  --color-border-default: #27272a;
-  --color-border-muted: #27272a;
-  --color-fg-default: #e4e4e7;
-  --color-fg-muted: #a1a1aa;
-  --color-accent-fg: #818cf8;
 }
 
 /* Oculta la barra de scroll (p.ej. en las pestañas) */
@@ -244,3 +195,57 @@ code,
   max-width: 100%;
   border-radius: 6px;
 }
+
+/* Markdown sobre papel claro (vista Visual System .design) */
+.vs-md { font-size: 15px; line-height: 1.65; color: #2b2b2b; }
+.vs-md > * + * { margin-top: 0.85em; }
+.vs-md h2 { font-size: 1.2em; font-weight: 600; margin-top: 1.6em; color: #111; }
+.vs-md h3 { font-size: 1.05em; font-weight: 600; margin-top: 1.3em; color: #111; }
+.vs-md strong { color: #111; font-weight: 600; }
+.vs-md a { color: #4f46e5; text-decoration: underline; text-underline-offset: 2px; }
+.vs-md ul { list-style: disc; padding-left: 1.4em; }
+.vs-md ol { list-style: decimal; padding-left: 1.4em; }
+.vs-md li + li { margin-top: 0.3em; }
+.vs-md code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.85em; background: #efeeec; border: 1px solid #e2e0dd; border-radius: 5px; padding: 0.05em 0.35em; }
+.vs-md pre { background: #efeeec; border: 1px solid #dddbd8; border-radius: 10px; padding: 1em 1.2em; overflow-x: auto; }
+.vs-md pre code { background: none; border: 0; padding: 0; font-size: 12px; line-height: 1.7; color: #3a3a3a; }
+.vs-md blockquote { border-left: 3px solid #d6d3d1; padding-left: 1em; color: #5f5f5f; }
+.vs-md table { border-collapse: collapse; font-size: 13px; }
+.vs-md th, .vs-md td { border: 1px solid #e2e0dd; padding: 0.4em 0.7em; text-align: left; }
+.vs-md th { background: #f3f2f0; font-weight: 600; }
+.vs-md hr { border-color: #e7e5e4; }
+
+/* Editor Markdown visual (TipTap) — documento "Diseñado" */
+.md-doc { outline: none; color: #e4e4e7; font-size: 15px; line-height: 1.7; min-height: 60vh; }
+.md-doc > * + * { margin-top: 0.75em; }
+.md-doc h1 { font-size: 2em; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-top: 1.2em; color: #fafafa; }
+.md-doc h2 { font-size: 1.45em; font-weight: 600; line-height: 1.3; margin-top: 1.4em; color: #fafafa; }
+.md-doc h3 { font-size: 1.15em; font-weight: 600; margin-top: 1.2em; color: #f4f4f5; }
+.md-doc > :first-child { margin-top: 0; }
+.md-doc a { color: #818cf8; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.md-doc strong { color: #fafafa; }
+.md-doc code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.85em; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; padding: 0.1em 0.35em; }
+.md-doc ul { list-style: disc; padding-left: 1.5em; }
+.md-doc ol { list-style: decimal; padding-left: 1.5em; }
+.md-doc li > p { margin: 0; }
+.md-doc li + li { margin-top: 0.25em; }
+.md-doc ul[data-type="taskList"] { list-style: none; padding-left: 0.2em; }
+.md-doc ul[data-type="taskList"] li { display: flex; gap: 0.55em; align-items: flex-start; }
+.md-doc ul[data-type="taskList"] li > label { margin-top: 0.3em; flex-shrink: 0; }
+.md-doc ul[data-type="taskList"] li > label input { accent-color: #6366f1; width: 15px; height: 15px; cursor: pointer; }
+.md-doc ul[data-type="taskList"] li > div { flex: 1; }
+.md-doc ul[data-type="taskList"] li[data-checked="true"] > div { color: #71717a; text-decoration: line-through; }
+.md-doc blockquote { border-left: 3px solid #6366f1; padding-left: 1em; color: #a1a1aa; }
+.md-doc hr { border: 0; border-top: 1px solid #3f3f46; margin: 1.5em 0; }
+.md-doc img { max-width: 100%; border-radius: 10px; border: 1px solid #27272a; }
+.md-doc img.ProseMirror-selectednode { outline: 2px solid #6366f1; outline-offset: 2px; }
+.md-doc table { border-collapse: collapse; width: 100%; font-size: 14px; table-layout: fixed; }
+.md-doc th, .md-doc td { border: 1px solid #3f3f46; padding: 0.4em 0.7em; text-align: left; vertical-align: top; position: relative; }
+.md-doc th { background: #1c1c1f; font-weight: 600; }
+.md-doc .selectedCell::after { content: ""; position: absolute; inset: 0; background: rgba(99, 102, 241, 0.15); pointer-events: none; }
+.md-doc .md-codeblock { position: relative; margin-top: 0.85em; }
+.md-doc .md-codeblock pre { background: #0d0d10; border: 1px solid #27272a; border-radius: 10px; padding: 0.9em 1.1em; overflow-x: auto; }
+.md-doc .md-codeblock pre code { background: none; border: 0; padding: 0; font-size: 12.5px; line-height: 1.6; color: #d4d4d8; }
+.md-doc .md-codeblock-lang { position: absolute; right: 10px; top: 6px; font-size: 10px; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; }
+.md-doc .md-codeblock-diagram { margin-top: 0.5em; }
+.md-doc p.is-editor-empty:first-child::before { content: "Empieza a escribir…"; color: #52525b; float: left; height: 0; pointer-events: none; }

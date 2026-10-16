@@ -11,10 +11,11 @@ import {
   Wrench01Icon,
   Refresh01Icon,
   PlayIcon,
+  Delete02Icon,
 } from "@hugeicons/core-free-icons";
+import { groupSessions, type SessionMeta, type Thread } from "@/lib/chatThreads";
 
-type SessionMeta = { id: string; file: string; modified: number; size: number; title: string };
-type HistMsg = { role: "user" | "assistant" | "summary" | "tool"; text: string; tool?: string };
+type HistMsg = { role: "user" | "assistant" | "summary" | "tool" | "part"; text: string; tool?: string };
 
 function relTime(ms: number): string {
   if (!ms) return "";
@@ -92,16 +93,56 @@ export default function ConversationHistory({
 }: {
   cwd: string;
   onClose: () => void;
-  onResume: (s: SessionMeta) => void;
+  onResume: (t: Thread) => void;
 }) {
-  const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
-  const [selected, setSelected] = useState<SessionMeta | null>(null);
+  const [sessions, setSessions] = useState<Thread[] | null>(null);
+  const [selected, setSelected] = useState<Thread | null>(null);
   const [transcript, setTranscript] = useState<HistMsg[] | null>(null);
   const [loadingT, setLoadingT] = useState(false);
+  // Borrado con confirmación en dos clics (sin diálogos): id de la fila / opción armada.
+  const [armed, setArmed] = useState<string | null>(null);
+  const [cleanOpen, setCleanOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(null), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
+
+  const remove = async (list: Thread[]) => {
+    if (!list.length) return;
+    setError(null);
+    try {
+      await invoke<number>("chat_sessions_delete", {
+        projectPath: cwd,
+        files: list.flatMap((x) => x.parts.map((p) => p.file)),
+      });
+      const gone = new Set(list.map((x) => x.key));
+      setSessions((cur) => cur?.filter((x) => !gone.has(x.key)) ?? null);
+      if (selected && gone.has(selected.key)) {
+        setSelected(null);
+        setTranscript(null);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setArmed(null);
+      setCleanOpen(false);
+    }
+  };
+
+  const DAY = 86_400_000;
+  const olderThan = (days: number) => (sessions ?? []).filter((x) => x.modified && Date.now() - x.modified > days * DAY);
+  const cleanOptions = [
+    { key: "c7", label: "Más de 7 días", list: olderThan(7) },
+    { key: "c30", label: "Más de 30 días", list: olderThan(30) },
+    { key: "call", label: "Todas", list: sessions ?? [] },
+  ];
 
   const load = async () => {
     try {
-      setSessions(await invoke<SessionMeta[]>("chat_sessions", { projectPath: cwd }));
+      setSessions(groupSessions(await invoke<SessionMeta[]>("chat_sessions", { projectPath: cwd })));
     } catch {
       setSessions([]);
     }
@@ -112,13 +153,20 @@ export default function ConversationHistory({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cwd]);
 
-  const openSession = async (s: SessionMeta) => {
+  // Un hilo con varias partes (p.ej. modo Auto: una sesión por tarea) se lee entero,
+  // con un separador entre partes.
+  const openSession = async (s: Thread) => {
     setSelected(s);
     setTranscript(null);
     setLoadingT(true);
     try {
-      const raw = await invoke<string>("chat_session_read", { file: s.file });
-      setTranscript(parseTranscript(raw));
+      const out: HistMsg[] = [];
+      for (const [i, p] of s.parts.entries()) {
+        const raw = await invoke<string>("chat_session_read", { file: p.file }).catch(() => "");
+        if (s.parts.length > 1) out.push({ role: "part", text: `Parte ${i + 1} de ${s.parts.length} · contexto nuevo` });
+        out.push(...parseTranscript(raw));
+      }
+      setTranscript(out);
     } catch {
       setTranscript([]);
     } finally {
@@ -154,22 +202,68 @@ export default function ConversationHistory({
             {selected ? selected.title : "Historial de conversaciones"}
           </span>
           {selected ? (
-            <button
-              type="button"
-              onClick={() => onResume(selected)}
-              className="ml-auto flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
-            >
-              <HugeiconsIcon icon={PlayIcon} size={12} /> Retomar
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => (armed === `d-${selected.key}` ? remove([selected]) : setArmed(`d-${selected.key}`))}
+                className={
+                  armed === `d-${selected.key}`
+                    ? "ml-auto flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-500"
+                    : "ml-auto flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] text-zinc-400 hover:bg-red-500/10 hover:text-red-400"
+                }
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={12} /> {armed === `d-${selected.key}` ? "¿Borrar?" : "Borrar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => onResume(selected)}
+                className="flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
+              >
+                <HugeiconsIcon icon={PlayIcon} size={12} /> Retomar
+              </button>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={load}
-              title="Actualizar"
-              className="ml-auto flex size-7 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            >
-              <HugeiconsIcon icon={Refresh01Icon} size={14} />
-            </button>
+            <>
+              <div className="relative ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setCleanOpen((v) => !v)}
+                  disabled={!sessions?.length}
+                  title="Borrar conversaciones antiguas"
+                  className="flex h-7 items-center gap-1 rounded px-2 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
+                >
+                  <HugeiconsIcon icon={Delete02Icon} size={13} /> Limpiar
+                </button>
+                {cleanOpen && (
+                  <div className="absolute right-0 top-8 z-10 flex w-52 flex-col rounded-lg border border-zinc-800 bg-[#1c1c1c] p-1 shadow-xl shadow-black/50">
+                    {cleanOptions.map((o) => (
+                      <button
+                        key={o.key}
+                        type="button"
+                        disabled={!o.list.length}
+                        onClick={() => (armed === o.key ? remove(o.list) : setArmed(o.key))}
+                        className={
+                          armed === o.key
+                            ? "flex items-center justify-between rounded px-2.5 py-1.5 text-left text-[12px] font-medium text-white bg-red-600 hover:bg-red-500"
+                            : "flex items-center justify-between rounded px-2.5 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent"
+                        }
+                      >
+                        <span>{armed === o.key ? `¿Borrar ${o.list.length}?` : o.label}</span>
+                        <span className={armed === o.key ? "text-white/80" : "text-zinc-600"}>{o.list.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={load}
+                title="Actualizar"
+                className="flex size-7 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                <HugeiconsIcon icon={Refresh01Icon} size={14} />
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -180,7 +274,8 @@ export default function ConversationHistory({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto">
+        {error && <div className="shrink-0 border-b border-zinc-800 bg-red-500/10 px-4 py-1.5 text-[11px] text-red-300">{error}</div>}
+        <div className="min-h-0 flex-1 overflow-auto" onMouseDown={() => setCleanOpen(false)}>
           {selected ? (
             <div className="flex flex-col gap-3 p-4">
               {loadingT && <div className="text-sm text-zinc-500">cargando…</div>}
@@ -201,7 +296,7 @@ export default function ConversationHistory({
             <div className="p-2">
               {sessions.map((s) => (
                 <div
-                  key={s.id}
+                  key={s.key}
                   className="group flex w-full items-center gap-2 rounded-lg px-3 py-2 hover:bg-zinc-800/60"
                 >
                   <button
@@ -210,7 +305,15 @@ export default function ConversationHistory({
                     className="min-w-0 flex-1 text-left"
                   >
                     <div className="truncate text-[13px] text-zinc-100">{s.title}</div>
-                    <div className="text-[11px] text-zinc-600">
+                    <div className="flex items-center gap-1.5 text-[11px] text-zinc-600">
+                      {s.parts.length > 1 && (
+                        <span
+                          title="Sesiones de claude encadenadas en esta conversación (modo Auto, cambios de modo…)"
+                          className="rounded bg-indigo-500/15 px-1.5 text-[10px] text-indigo-300"
+                        >
+                          {s.parts.length} partes
+                        </span>
+                      )}
                       {relTime(s.modified)} · {(s.size / 1024).toFixed(0)} KB
                     </div>
                   </button>
@@ -221,6 +324,19 @@ export default function ConversationHistory({
                     className="flex shrink-0 items-center gap-1 rounded bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white opacity-0 transition-opacity hover:bg-indigo-500 group-hover:opacity-100"
                   >
                     <HugeiconsIcon icon={PlayIcon} size={11} /> Retomar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (armed === `d-${s.key}` ? remove([s]) : setArmed(`d-${s.key}`))}
+                    title="Borrar esta conversación"
+                    className={
+                      armed === `d-${s.key}`
+                        ? "flex shrink-0 items-center gap-1 rounded bg-red-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-500"
+                        : "flex size-6 shrink-0 items-center justify-center rounded text-zinc-500 opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                    }
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} size={12} />
+                    {armed === `d-${s.key}` && "¿Borrar?"}
                   </button>
                 </div>
               ))}
@@ -234,6 +350,14 @@ export default function ConversationHistory({
 }
 
 function TranscriptMsg({ msg }: { msg: HistMsg }) {
+  if (msg.role === "part")
+    return (
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-zinc-600">
+        <span className="h-px flex-1 bg-zinc-800" />
+        {msg.text}
+        <span className="h-px flex-1 bg-zinc-800" />
+      </div>
+    );
   if (msg.role === "summary")
     return (
       <div className="self-center rounded-full bg-zinc-800 px-3 py-1 text-[11px] text-zinc-400">

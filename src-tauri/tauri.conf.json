@@ -18,7 +18,8 @@
         "minWidth": 720,
         "minHeight": 480,
         "decorations": false,
-        "backgroundColor": "#121212"
+        "backgroundColor": "#121212",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=OverlayScrollbar,FluentOverlayScrollbar"
       }
     ],
     "security": {

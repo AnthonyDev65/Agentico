@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>Agentico · Remoto</title>
+<style>
+  :root { color-scheme: dark; --bg:#121212; --panel:#1a1a1a; --line:#27272a; --muted:#71717a; --text:#f4f4f5; --accent:#4f46e5; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display:flex; flex-direction:column; height:100dvh; }
+  header { display:flex; align-items:center; gap:10px; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; border-bottom:1px solid var(--line); background:#161616; }
+  header .logo { width:22px; height:22px; border-radius:6px; background: radial-gradient(circle at 50% 50%, #D97757 0 35%, transparent 36%), conic-gradient(from 0deg, #D97757 0 10%, transparent 10% 20%, #D97757 20% 30%, transparent 30% 40%, #D97757 40% 50%, transparent 50% 60%, #D97757 60% 70%, transparent 70% 80%, #D97757 80% 90%, transparent 90%); flex:none; }
+  header select { flex:1; min-width:0; background:transparent; color:var(--text); border:0; font: 600 15px system-ui; outline:none; text-overflow:ellipsis; }
+  header select option { background:#1a1a1a; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#52525b; flex:none; }
+  .dot.busy { background:#34d399; box-shadow:0 0 0 0 #34d39988; animation: pulse 1.4s infinite; }
+  .dot.off { background:#ef4444; }
+  @keyframes pulse { 70% { box-shadow:0 0 0 8px #34d39900; } 100% { box-shadow:0 0 0 0 #34d39900; } }
+  #mode { font-size:11px; color:var(--muted); white-space:nowrap; }
+  main { flex:1; overflow-y:auto; padding:14px 12px 8px; display:flex; flex-direction:column; gap:10px; overscroll-behavior: contain; }
+  .empty { margin:auto; text-align:center; color:var(--muted); font-size:14px; padding:24px; }
+  .u { align-self:flex-end; max-width:86%; background:var(--accent); color:#fff; padding:8px 12px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; word-wrap:break-word; }
+  .aw { align-self:stretch; display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+  .a { align-self:flex-start; max-width:92%; background:#27272a80; border:1px solid var(--line); padding:8px 12px; border-radius:16px 16px 16px 4px; word-wrap:break-word; overflow-wrap:anywhere; }
+  .a p { margin:.35em 0; } .a h1,.a h2,.a h3 { font-size:1em; margin:.6em 0 .3em; }
+  .a ul,.a ol { margin:.3em 0; padding-left:1.3em; }
+  .a code { background:#0006; padding:1px 4px; border-radius:4px; font: 12.5px ui-monospace, Consolas, monospace; }
+  .a pre { background:#0008; border:1px solid var(--line); padding:8px; border-radius:8px; overflow-x:auto; font: 12px/1.4 ui-monospace, Consolas, monospace; }
+  .a pre code { background:none; padding:0; }
+  .a a { color:#a5b4fc; }
+  .cursor { display:inline-block; width:6px; height:14px; background:#818cf8; vertical-align:-2px; animation: blink 1s steps(2) infinite; margin-left:2px; }
+  @keyframes blink { 50% { opacity:0; } }
+  .tool { align-self:flex-start; max-width:92%; font-size:12.5px; background:#18181bcc; border:1px solid var(--line); border-radius:10px; padding:6px 10px; color:#d4d4d8; }
+  .tool summary { list-style:none; display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .tool summary::-webkit-details-marker { display:none; }
+  .tool .n { font-weight:600; } .tool .d { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+  .tool pre { margin:6px 0 0; white-space:pre-wrap; word-break:break-word; color:#a1a1aa; font: 11.5px ui-monospace, Consolas, monospace; max-height:220px; overflow:auto; }
+  .st-running { color:#fbbf24; } .st-done { color:#34d399; } .st-error { color:#f87171; }
+  .sys { align-self:center; font-size:11.5px; color:#52525b; text-align:center; }
+  .err { align-self:stretch; font-size:12.5px; color:#fca5a5; background:#450a0a66; border:1px solid #7f1d1d99; border-radius:10px; padding:8px 10px; white-space:pre-wrap; }
+  .card { align-self:stretch; background:#1c1917; border:1px solid #78350f99; border-radius:12px; padding:10px 12px; font-size:13.5px; }
+  .card .t { font-weight:600; color:#fcd34d; margin-bottom:4px; }
+  .card pre { background:#0007; border-radius:8px; padding:6px 8px; margin:6px 0; white-space:pre-wrap; word-break:break-word; font: 11.5px ui-monospace, Consolas, monospace; color:#d4d4d8; max-height:160px; overflow:auto; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button { font: inherit; border:0; border-radius:999px; padding:8px 14px; cursor:pointer; color:#fff; background:#3f3f46; }
+  button:disabled { opacity:.45; }
+  .b-ok { background:#059669; } .b-al { background:#4f46e5; } .b-no { background:#3f3f46; color:#fca5a5; }
+  .q { align-self:stretch; background:#1e1b4b55; border:1px solid #3730a399; border-radius:12px; padding:10px 12px; }
+  .q .qq { font-weight:600; margin:8px 0 6px; font-size:14px; } .q .qq:first-child { margin-top:0; }
+  .opt { display:block; width:100%; text-align:left; border-radius:10px; background:#27272a; color:#e4e4e7; padding:8px 10px; margin:4px 0; font-size:13.5px; }
+  .opt small { display:block; color:var(--muted); font-size:11.5px; }
+  .opt.on { background:#4338ca; color:#fff; } .opt.on small { color:#c7d2fe; }
+  .q input { width:100%; background:#18181b; border:1px solid var(--line); border-radius:10px; color:var(--text); padding:8px 10px; font: inherit; font-size:13.5px; margin-top:4px; outline:none; }
+  .res { align-self:center; font-size:11px; color:#52525b; }
+  #queue { padding:0 12px; display:flex; flex-direction:column; gap:4px; }
+  .qi { display:flex; align-items:center; gap:8px; background:#18181b; border:1px solid var(--line); border-radius:10px; padding:6px 6px 6px 10px; font-size:13px; }
+  .qi span.l { font-size:10.5px; background:#4f46e526; color:#a5b4fc; border-radius:5px; padding:1px 6px; flex:none; }
+  .qi span.x { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#d4d4d8; }
+  .qi button { padding:4px 10px; background:transparent; color:var(--muted); }
+  #sched { padding:2px 14px; font-size:11.5px; color:var(--muted); }
+  footer { padding:8px 10px calc(env(safe-area-inset-bottom) + 10px); border-top:1px solid var(--line); background:#161616; }
+  .composer { display:flex; align-items:flex-end; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:6px 6px 6px 14px; }
+  textarea { flex:1; background:transparent; border:0; color:var(--text); font: 16px/1.4 system-ui, sans-serif; resize:none; outline:none; max-height:140px; padding:6px 0; }
+  #send { width:38px; height:38px; padding:0; display:grid; place-items:center; background:#fff; color:#000; flex:none; }
+  #send.queue { width:auto; padding:0 12px; background:var(--accent); color:#fff; font-size:13px; }
+  #stop { width:38px; height:38px; padding:0; display:grid; place-items:center; background:#dc2626; flex:none; }
+  #status { font-size:11.5px; color:var(--muted); padding:0 4px 6px; display:flex; align-items:center; gap:6px; min-height:18px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"></div>
+  <select id="proj"></select>
+  <span id="mode"></span>
+  <span id="dot" class="dot off" title="Conexión"></span>
+</header>
+<main id="list"><div class="empty">Conectando con Agentico…</div></main>
+<div id="queue"></div>
+<div id="sched" class="hidden"></div>
+<footer>
+  <div id="status"></div>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Pide algo a Claude…"></textarea>
+    <button id="stop" class="hidden" title="Detener">
+      <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" rx="2" fill="#fff"/></svg>
+    </button>
+    <button id="send" title="Enviar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    </button>
+  </div>
+</footer>
+<script>
+(() => {
+  // Si se entró con ?t=, el servidor ya dejó la cookie: quitar el token de la barra.
+  if (location.search) history.replaceState(null, "", "/");
+
+  const $ = (id) => document.getElementById(id);
+  const list = $("list"), input = $("input"), sendBtn = $("send"), stopBtn = $("stop");
+  let projects = [], snaps = {}, current = localStorage.getItem("ag.proj") || "";
+  const nodes = new Map(); // id → { el, sig }
+  const answers = {}; // respuestas a medio elegir de las tarjetas de preguntas
+  const sentQ = new Set();
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  // Markdown mínimo: bloques de código, títulos, listas, negrita/cursiva, código y enlaces.
+  function inline(s) {
+    return s
+      .replace(/`([^`]+)`/g, (_, c) => "<code>" + c + "</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+  function md(src) {
+    const out = [];
+    const parts = String(src).split(/```/);
+    parts.forEach((part, i) => {
+      if (i % 2 === 1) {
+        const nl = part.indexOf("\n");
+        out.push("<pre><code>" + esc(nl >= 0 ? part.slice(nl + 1) : part) + "</code></pre>");
+        return;
+      }
+      let listType = null;
+      const close = () => { if (listType) { out.push("</" + listType + ">"); listType = null; } };
+      for (const raw of part.split("\n")) {
+        const line = esc(raw);
+        let m;
+        if ((m = line.match(/^\s*#{1,6}\s+(.*)$/))) { close(); out.push("<h3>" + inline(m[1]) + "</h3>"); }
+        else if ((m = line.match(/^\s*[-*]\s+(?:\[( |x|\/)\]\s+)?(.*)$/))) {
+          if (listType !== "ul") { close(); out.push("<ul>"); listType = "ul"; }
+          const box = m[1] === "x" ? "☑ " : m[1] === " " ? "☐ " : m[1] === "/" ? "◐ " : "";
+          out.push("<li>" + box + inline(m[2]) + "</li>");
+        }
+        else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
+          if (listType !== "ol") { close(); out.push("<ol>"); listType = "ol"; }
+          out.push("<li>" + inline(m[1]) + "</li>");
+        }
+        else if (!line.trim()) close();
+        else { close(); out.push("<p>" + inline(line) + "</p>"); }
+      }
+      close();
+    });
+    return out.join("");
+  }
+
+  // Bloques ```questions (mismo formato que el chat de Agentico).
+  function splitQuestions(text) {
+    const segs = [];
+    const re = /```questions[^\n]*\n/g;
+    let pos = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > pos) segs.push({ md: text.slice(pos, m.index) });
+      const start = m.index + m[0].length;
+      const end = text.indexOf("```", start);
+      if (end < 0) { segs.push({ pending: true }); pos = text.length; break; }
+      let qs = null;
+      try {
+        const d = JSON.parse(text.slice(start, end));
+        const arr = Array.isArray(d) ? d : d && d.questions;
+        qs = (arr || []).map((x) => ({ q: String(x.q ?? x.question ?? ""), options: (x.options || []).map((o) => typeof o === "string" ? o : String(o.label ?? o)), multi: !!(x.multi ?? x.multiSelect) })).filter((x) => x.q);
+      } catch {}
+      segs.push(qs && qs.length ? { qs } : { md: "```\n" + text.slice(start, end) + "```" });
+      pos = end + 3; re.lastIndex = pos;
+    }
+    if (pos < text.length) segs.push({ md: text.slice(pos) });
+    return segs;
+  }
+  const splitOpt = (o) => { const i = o.search(/\s[—–-]\s/); return i > 0 ? [o.slice(0, i).trim(), o.slice(i + 3).trim()] : [o, ""]; };
+
+  function questionsHtml(msgId, k, qs, locked) {
+    const key = msgId + ":" + k;
+    const st = answers[key] || (answers[key] = qs.map(() => ({ picked: [], other: "" })));
+    const done = sentQ.has(key) || locked;
+    let h = '<div class="q" data-qkey="' + key + '">';
+    qs.forEach((q, i) => {
+      h += '<div class="qq">' + esc(q.q) + (q.multi ? ' <small style="color:#71717a">(varias)</small>' : "") + "</div>";
+      q.options.forEach((o) => {
+        const [l, d] = splitOpt(o);
+        const on = st[i].picked.includes(o);
+        h += '<button class="opt' + (on ? " on" : "") + '" data-q="' + i + '"' + (q.multi ? " data-multi" : "") + ' data-o="' + esc(o) + '"' + (done ? " disabled" : "") + ">" + esc(l) + (d ? "<small>" + esc(d) + "</small>" : "") + "</button>";
+      });
+      h += '<input data-other="' + i + '" placeholder="Otra respuesta…" value="' + esc(st[i].other) + '"' + (done ? " disabled" : "") + ">";
+    });
+    h += '<div class="row"><button class="b-al" data-qsend' + (done ? " disabled" : "") + ">" + (sentQ.has(key) ? "Enviado" : "Enviar respuestas") + "</button></div></div>";
+    return h;
+  }
+
+  const ICON = { running: "⟳", done: "✓", error: "!" };
+
+  function render(m, locked) {
+    switch (m.k) {
+      case "user":
+        return { cls: "u", html: esc(m.text) + (m.images ? '<div style="opacity:.7;font-size:12px">📎 ' + m.images + " imagen(es)</div>" : "") };
+      case "assistant": {
+        if (!m.text.trim() && !m.streaming) return null;
+        // Burbujas de texto y tarjetas de preguntas, en orden.
+        const out = [];
+        let buf = "";
+        const flush = () => { if (buf.trim()) out.push('<div class="a">' + buf + "</div>"); buf = ""; };
+        splitQuestions(m.text).forEach((s, k) => {
+          if (s.md != null) buf += md(s.md);
+          else if (s.pending) buf += '<p style="color:#a5b4fc">Preparando preguntas…</p>';
+          else { flush(); out.push(questionsHtml(m.id, k, s.qs, locked)); }
+        });
+        if (m.streaming) buf += '<span class="cursor"></span>';
+        flush();
+        return { cls: "aw", html: out.join("") };
+      }
+      case "tool":
+        return { cls: "tool", tag: "details", html: '<summary><span class="st-' + m.status + '">' + ICON[m.status] + '</span><span class="n">' + esc(m.name) + '</span><span class="d">' + esc(m.detail || "") + "</span></summary>" + (m.result ? "<pre>" + esc(m.result) + "</pre>" : "") };
+      case "permission": {
+        const pending = m.status === "pending";
+        const label = { allowed: "Permitido", always: "Permitido siempre", denied: "Denegado", cancelled: "Cancelado", auto: "Auto-permitido" }[m.status] || "";
+        if (!pending) return { cls: "sys", html: "🔐 " + esc(m.name) + " · " + label };
+        return { cls: "card", html: '<div class="t">🔐 Claude pide permiso: ' + esc(m.name) + "</div>" + (m.description ? "<div>" + esc(m.description) + "</div>" : "") + "<pre>" + esc(m.detail || "") + '</pre><div class="row"><button class="b-ok" data-perm="allow" data-mid="' + m.id + '">Permitir</button>' + (m.canAlways ? '<button class="b-al" data-perm="always" data-mid="' + m.id + '">Siempre</button>' : "") + '<button class="b-no" data-perm="deny" data-mid="' + m.id + '">Denegar</button></div>' };
+      }
+      case "result":
+        return { cls: "res", html: (m.isError ? "⚠ terminó con error" : "✓ turno completo") + (m.durationMs != null ? " · " + (m.durationMs / 1000).toFixed(1) + "s" : "") };
+      case "system":
+        return { cls: "sys", html: esc(m.text) };
+      case "error":
+        return { cls: "err", html: esc(m.text) };
+    }
+    return null;
+  }
+
+  function draw() {
+    const s = snaps[current];
+    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+    if (!s) {
+      nodes.clear();
+      list.innerHTML = '<div class="empty">' + (!loaded ? "Conectando con Agentico…" : projects.length ? "Abre este proyecto en Agentico (en el PC) para ver su chat." : "No hay proyectos abiertos en Agentico.") + "</div>";
+    } else {
+      const msgs = s.messages || [];
+      if (!msgs.length && !nodes.size) list.innerHTML = '<div class="empty">Chat vacío. Escribe abajo para empezar.</div>';
+      const lastUser = msgs.reduce((a, m, i) => (m.k === "user" ? i : a), -1);
+      const seen = new Set();
+      let prev = null;
+      msgs.forEach((m, i) => {
+        const r = render(m, s.busy || i < lastUser);
+        if (!r) return;
+        const id = String(m.id);
+        seen.add(id);
+        const sig = r.cls + r.html;
+        let n = nodes.get(id);
+        if (!n || n.sig !== sig) {
+          const el = document.createElement(r.tag || "div");
+          el.className = r.cls;
+          el.innerHTML = r.html;
+          if (n) {
+            if (n.el.open) el.open = true;
+            n.el.replaceWith(el);
+          }
+          n = { el, sig };
+          nodes.set(id, n);
+        }
+        const after = prev ? prev.nextSibling : list.firstChild;
+        if (n.el !== after) list.insertBefore(n.el, after);
+        prev = n.el;
+      });
+      for (const [id, n] of nodes) if (!seen.has(id)) { n.el.remove(); nodes.delete(id); }
+      [...list.children].forEach((c) => { if (c.classList.contains("empty") && msgs.length) c.remove(); });
+    }
+    if (nearBottom) list.scrollTop = list.scrollHeight;
+
+    const busy = !!(s && s.busy);
+    $("dot").className = "dot" + (online ? (busy ? " busy" : "") : " off");
+    $("mode").textContent = s ? [s.perm, s.model].filter(Boolean).join(" · ") : "";
+    $("status").textContent = !online ? "Sin conexión con Agentico… reintentando" : busy ? (s.status || "Trabajando…") : "";
+    stopBtn.classList.toggle("hidden", !busy);
+    sendBtn.classList.toggle("queue", busy);
+    sendBtn.innerHTML = busy ? "A la cola" : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+    input.placeholder = busy ? "Claude trabaja: lo que envíes irá a la cola…" : "Pide algo a Claude…";
+
+    const q = (s && s.queue) || [];
+    $("queue").innerHTML = q.map((x, i) => '<div class="qi"><span class="l">' + (i === 0 && busy ? "Siguiente" : "En cola " + (i + 1)) + '</span><span class="x">' + esc(x.text) + '</span>' + (!busy ? '<button data-qrun="' + x.id + '">▶</button>' : "") + '<button data-qdel="' + x.id + '">✕</button></div>').join("");
+    const sc = (s && s.scheduled) || [];
+    $("sched").classList.toggle("hidden", !sc.length);
+    if (sc.length) {
+      const next = Math.min(...sc.map((x) => x.at));
+      $("sched").textContent = "⏰ " + sc.length + " programado(s) · próximo " + new Date(next).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) + (sc.some((x) => x.missed) ? " · hay perdidos" : "");
+    }
+  }
+
+  function fillProjects() {
+    const sel = $("proj");
+    if (!projects.find((p) => p.id === current)) current = (projects.find((p) => p.active) || projects[0] || {}).id || "";
+    sel.innerHTML = projects.map((p) => '<option value="' + esc(p.id) + '"' + (p.id === current ? " selected" : "") + ">" + esc(p.name) + (busyMap[p.id] ? " ●" : "") + "</option>").join("") || "<option>Sin proyectos</option>";
+  }
+  $("proj").onchange = (e) => { current = e.target.value; localStorage.setItem("ag.proj", current); nodes.clear(); list.innerHTML = ""; draw(); restart(); };
+
+  async function act(action) {
+    if (!current) return;
+    try {
+      const r = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: current, action }) });
+      if (r.status === 401) location.reload();
+    } catch { /* sin red: el SSE mostrará el estado */ }
+  }
+
+  function send() {
+    const text = input.value.trim();
+    if (!text) return;
+    act({ type: "send", text });
+    input.value = "";
+    autosize();
+  }
+  sendBtn.onclick = send;
+  stopBtn.onclick = () => act({ type: "stop" });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) { e.preventDefault(); send(); } });
+  const autosize = () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 140) + "px"; };
+  input.addEventListener("input", autosize);
+
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.perm) { b.parentElement.querySelectorAll("button").forEach((x) => (x.disabled = true)); act({ type: "permission", msgId: Number(b.dataset.mid), decision: b.dataset.perm }); }
+    else if (b.dataset.qdel) act({ type: "queue-remove", qid: Number(b.dataset.qdel) });
+    else if (b.dataset.qrun) act({ type: "queue-send", qid: Number(b.dataset.qrun) });
+    else if (b.dataset.o != null) {
+      const card = b.closest(".q"), key = card.dataset.qkey, i = Number(b.dataset.q), st = answers[key][i];
+      const multi = b.dataset.multi != null;
+      const o = b.dataset.o;
+      if (multi) st.picked = st.picked.includes(o) ? st.picked.filter((x) => x !== o) : [...st.picked, o];
+      else { st.picked = st.picked[0] === o ? [] : [o]; st.other = ""; }
+      card.querySelectorAll('[data-q="' + i + '"]').forEach((x) => x.classList.toggle("on", st.picked.includes(x.dataset.o)));
+    } else if (b.dataset.qsend != null) {
+      const card = b.closest(".q"), key = card.dataset.qkey, st = answers[key];
+      const qs = [...card.querySelectorAll(".qq")].map((x) => x.textContent.replace(/\s*\(varias\)$/, ""));
+      const lines = qs.map((q, i) => { const v = [...st[i].picked.map((p) => splitOpt(p)[0]), st[i].other.trim()].filter(Boolean).join(", "); return v ? (i + 1) + ". " + q + "\n   → " + v : null; }).filter(Boolean);
+      if (!lines.length) return;
+      sentQ.add(key);
+      act({ type: "send", text: "Mis respuestas:\n" + lines.join("\n") });
+      card.querySelectorAll("button,input").forEach((x) => (x.disabled = true));
+      b.textContent = "Enviado";
+    }
+  });
+  document.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.dataset && t.dataset.other != null) {
+      const key = t.closest(".q").dataset.qkey, i = Number(t.dataset.other);
+      answers[key][i].other = t.value;
+    }
+  });
+
+  // Long polling: «dame lo nuevo desde la versión N del proyecto que miro». El servidor
+  // responde en cuanto hay cambios (o a los 25 s). Funciona a través del túnel de
+  // Cloudflare, que retiene las respuestas en streaming (SSE).
+  let online = false, loaded = false, ver = null, ctrl = null, gen = 0;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function loop(my) {
+    while (my === gen) {
+      ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 40000);
+      try {
+        const qs = "p=" + encodeURIComponent(current) + (ver != null ? "&v=" + ver : "");
+        const r = await fetch("/api/poll?" + qs, { cache: "no-store", signal: ctrl.signal });
+        if (r.status === 401) { location.reload(); return; }
+        if (!r.ok) throw new Error(r.status);
+        const m = await r.json();
+        if (my !== gen) return;
+        online = true; loaded = true;
+        projects = m.projects || [];
+        busyMap = m.busy || {};
+        const pick = !projects.find((p) => p.id === current);
+        fillProjects();
+        if (m.snapshot && m.pid === current) snaps[current] = m.snapshot;
+        else if (m.pid === current) delete snaps[current];
+        // Si el proyecto elegido cambió (primera carga), pedirlo ya sin esperar.
+        ver = pick || m.pid !== current ? null : m.version;
+        draw();
+      } catch {
+        if (my !== gen) return;
+        online = false; draw();
+        await sleep(2000);
+      } finally { clearTimeout(timer); }
+    }
+  }
+  let busyMap = {};
+  function restart() { gen++; if (ctrl) ctrl.abort(); ver = null; loop(gen); }
+  restart();
+  // Al volver al navegador (el móvil congela las peticiones en segundo plano), reconectar.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) restart(); });
+})();
+</script>
+</body>
+</html>

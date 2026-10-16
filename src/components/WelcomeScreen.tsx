@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -72,7 +71,23 @@ function cleanLine(s: string): string {
   return last.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 }
 
-/** Terminal en vivo (cajón derecho) con la salida de la creación/clonado. */
+type ConsoleState = { lines: string[]; busy: boolean; onClose: () => void };
+
+// Las vistas (crear / clonar) publican aquí su consola; WelcomeScreen la muestra en
+// un panel lateral que empuja el contenido (en vez de taparlo).
+const ConsoleCtx = createContext<(c: ConsoleState | null) => void>(() => {});
+
+function useCreateConsole(lines: string[], busy: boolean, onClose: () => void) {
+  const set = useContext(ConsoleCtx);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    set(busy || lines.length > 0 ? { lines, busy, onClose: () => closeRef.current() } : null);
+  }, [lines, busy, set]);
+  useEffect(() => () => set(null), [set]);
+}
+
+/** Terminal en vivo (panel derecho) con la salida de la creación/clonado. */
 function CreateConsole({
   lines,
   busy,
@@ -87,8 +102,8 @@ function CreateConsole({
     endRef.current?.scrollIntoView();
   }, [lines]);
 
-  return createPortal(
-    <div className="fixed bottom-3 right-3 top-11 z-[60] flex w-[460px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-[#0d0d10] shadow-2xl shadow-black/60">
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-[#0d0d10] shadow-2xl shadow-black/40">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-zinc-800 bg-[#1a1a1a] px-3 text-[11px] text-zinc-400">
         <HugeiconsIcon icon={ComputerTerminal01Icon} size={13} />
         <span className="font-medium text-zinc-300">Terminal</span>
@@ -123,8 +138,7 @@ function CreateConsole({
         )}
         <div ref={endRef} />
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
@@ -135,7 +149,9 @@ export default function WelcomeScreen({
   onProjectReady,
   onClose,
   canClose,
+  initialView = "home",
 }: {
+  initialView?: "home" | "new" | "clone";
   projects: Project[];
   onOpenFolder: () => void;
   onOpenProject: (path: string) => void;
@@ -143,10 +159,18 @@ export default function WelcomeScreen({
   onClose: () => void;
   canClose: boolean;
 }) {
-  const [view, setView] = useState<"home" | "new" | "clone">("home");
+  const [view, setView] = useState<"home" | "new" | "clone">(initialView);
+  const [consoleState, setConsoleState] = useState<ConsoleState | null>(null);
+  // Mantiene el último contenido mientras el panel se cierra (animación de salida).
+  const lastConsole = useRef<ConsoleState | null>(null);
+  if (consoleState) lastConsole.current = consoleState;
+  const shown = consoleState ?? lastConsole.current;
+  const consoleOpen = !!consoleState;
 
   return (
-    <div className="relative h-full overflow-auto bg-[#121212]">
+    <ConsoleCtx.Provider value={setConsoleState}>
+    <div className="flex h-full bg-[#121212]">
+    <div className="relative min-w-0 flex-1 overflow-auto">
       {canClose && (
         <button
           type="button"
@@ -184,6 +208,24 @@ export default function WelcomeScreen({
         )}
       </div>
     </div>
+
+    {/* Consola: se abre ensanchándose → el contenido centrado se desplaza a la izquierda */}
+    <div
+      className="shrink-0 overflow-hidden transition-[width] duration-300 ease-out"
+      style={{ width: consoleOpen ? "min(480px, 45vw)" : 0 }}
+      aria-hidden={!consoleOpen}
+    >
+      <div
+        className={cn(
+          "h-full w-[min(480px,45vw)] py-3 pr-3 transition-[opacity,transform] duration-300 ease-out",
+          consoleOpen ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0",
+        )}
+      >
+        {shown && <CreateConsole lines={shown.lines} busy={shown.busy} onClose={shown.onClose} />}
+      </div>
+    </div>
+    </div>
+    </ConsoleCtx.Provider>
   );
 }
 
@@ -317,6 +359,7 @@ function NewProjectView({
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
+  useCreateConsole(logLines, busy, () => setLogLines([]));
 
   const toggleLib = (n: string) =>
     setLibs((l) => (l.includes(n) ? l.filter((x) => x !== n) : [...l, n]));
@@ -484,9 +527,6 @@ function NewProjectView({
         )}
       </div>
 
-      {(busy || logLines.length > 0) && (
-        <CreateConsole lines={logLines} busy={busy} onClose={() => setLogLines([])} />
-      )}
     </div>
   );
 }
@@ -503,6 +543,7 @@ function CloneView({
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
+  useCreateConsole(logLines, busy, () => setLogLines([]));
 
   const clone = async () => {
     if (!url.trim() || !dir) return;
@@ -555,9 +596,6 @@ function CloneView({
         )}
       </div>
 
-      {(busy || logLines.length > 0) && (
-        <CreateConsole lines={logLines} busy={busy} onClose={() => setLogLines([])} />
-      )}
     </div>
   );
 }

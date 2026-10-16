@@ -11,20 +11,27 @@ import {
   Edit02Icon,
   Delete01Icon,
   Refresh01Icon,
+  Flowchart01Icon,
+  CheckListIcon,
+  FolderSearchIcon,
+  PaintBoardIcon,
 } from "@hugeicons/core-free-icons";
-import { fileIcon } from "@/lib/fileIcons";
+import { tasksTemplate } from "@/lib/tasks";
+import { normPath, onFsChange } from "@/lib/fsEvents";
+import { designTemplate } from "@/lib/visualSystem";
+import { displayName, fileIcon } from "@/lib/fileIcons";
 import { cn } from "@/lib/utils";
 
 type Entry = { name: string; path: string; is_dir: boolean };
 type TNode = { path: string; name: string; isDir: boolean };
 
 // Devuelve la carpeta padre PRESERVANDO el separador original (clave del tree).
-const parentOf = (p: string) => {
+export const parentOf = (p: string) => {
   const trimmed = p.replace(/[\\/]+$/, "");
   const i = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
   return i >= 0 ? trimmed.slice(0, i) : trimmed;
 };
-const joinPath = (dir: string, name: string) => dir.replace(/[\\/]+$/, "") + "/" + name;
+export const joinPath = (dir: string, name: string) => dir.replace(/[\\/]+$/, "") + "/" + name;
 
 type Ctx = {
   versions: Record<string, number>;
@@ -48,10 +55,13 @@ export default function FileTree({
   root,
   onOpenFile,
   activePath,
+  refresh,
 }: {
   root: string;
   onOpenFile: (path: string, name: string) => void;
   activePath: string | null;
+  // Pedir refresco de una carpeta desde fuera (p.ej. tras crear archivos).
+  refresh?: { dir: string; seq: number } | null;
 }) {
   const [versions, setVersions] = useState<Record<string, number>>({});
   const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
@@ -63,6 +73,23 @@ export default function FileTree({
   const childrenRef = useRef<Record<string, Entry[]>>({});
 
   const bump = (dir: string) => setVersions((v) => ({ ...v, [dir]: (v[dir] ?? 0) + 1 }));
+  useEffect(() => {
+    if (refresh) bump(refresh.dir);
+  }, [refresh?.seq]);
+  // Archivos creados/borrados/renombrados fuera del árbol (agente, terminal…).
+  useEffect(
+    () =>
+      onFsChange(root, (c) => {
+        if (!c.structural) return;
+        const changed = new Set(c.dirs.map(normPath));
+        // Solo carpetas ya cargadas (las demás se leen al abrirlas); clave exacta del árbol.
+        for (const dir of [root, ...Object.keys(childrenRef.current)]) {
+          if (changed.has(normPath(dir))) bump(dir);
+        }
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [root],
+  );
   const setOpen = (dir: string, open: boolean) =>
     setOpenDirs((s) => {
       const n = new Set(s);
@@ -150,6 +177,63 @@ export default function FileTree({
         run(() => invoke("fs_create_file", { path: joinPath(dir, name.trim()) }), dir, true);
       },
     });
+  // Crea un .mmd vacío y lo abre: el editor visual ofrece elegir el tipo de diagrama.
+  const newDiagram = (dir: string) =>
+    setModal({
+      type: "input",
+      title: "Nuevo diagrama UML",
+      value: "",
+      placeholder: "nombre (p.ej. login)",
+      onOk: (raw) => {
+        const base = raw.trim().replace(/\.(mmd|mermaid)$/i, "");
+        if (!base) return;
+        const name = `${base}.mmd`;
+        const path = joinPath(dir, name);
+        run(async () => {
+          await invoke("fs_create_file", { path });
+          onOpenFile(path, name);
+        }, dir, true);
+      },
+    });
+  // Lista de tareas `.tasks` con plantilla (incluye la leyenda del formato para la IA).
+  const newTasks = (dir: string) =>
+    setModal({
+      type: "input",
+      title: "Nueva lista de tareas",
+      value: "tareas",
+      placeholder: "nombre",
+      onOk: (raw) => {
+        const base = raw.trim().replace(/[.]tasks$/i, "");
+        if (!base) return;
+        const name = `${base}.tasks`;
+        const path = joinPath(dir, name);
+        const projectName = root.split(/[\\/]/).filter(Boolean).pop() ?? "proyecto";
+        run(async () => {
+          await invoke("fs_create_file", { path });
+          await invoke("fs_write", { path, content: tasksTemplate(projectName) });
+          onOpenFile(path, name);
+        }, dir, true);
+      },
+    });
+  const newDesign = (dir: string) =>
+    setModal({
+      type: "input",
+      title: "Nuevo Visual System",
+      value: "visual-system",
+      placeholder: "nombre",
+      onOk: (raw) => {
+        const base = raw.trim().replace(/[.]design$/i, "");
+        if (!base) return;
+        const name = `${base}.design`;
+        const path = joinPath(dir, name);
+        const projectName = root.split(/[\\/]/).filter(Boolean).pop() ?? "Proyecto";
+        run(async () => {
+          await invoke("fs_create_file", { path });
+          await invoke("fs_write", { path, content: designTemplate(projectName) });
+          onOpenFile(path, name);
+        }, dir, true);
+      },
+    });
   const newFolder = (dir: string) =>
     setModal({
       type: "input",
@@ -165,10 +249,13 @@ export default function FileTree({
     setModal({
       type: "input",
       title: "Renombrar",
-      value: node.name,
+      value: node.isDir ? node.name : displayName(node.name),
       placeholder: "nuevo nombre",
       onOk: (name) => {
-        const nn = name.trim();
+        let nn = name.trim();
+        // Si la extensión está oculta (.tasks, .design) se conserva al renombrar.
+        const hiddenExt = !node.isDir && displayName(node.name) !== node.name ? node.name.slice(displayName(node.name).length) : "";
+        if (hiddenExt && nn && !nn.toLowerCase().endsWith(hiddenExt.toLowerCase())) nn += hiddenExt;
         if (!nn || nn === node.name) return;
         const dir = parentOf(node.path);
         run(() => invoke("fs_rename", { from: node.path, to: joinPath(dir, nn) }), dir);
@@ -183,7 +270,7 @@ export default function FileTree({
       title:
         targets.length > 1
           ? `¿Eliminar ${targets.length} elementos?`
-          : `¿Eliminar "${node.name}"?${node.isDir ? " (y su contenido)" : ""}`,
+          : `¿Eliminar "${displayName(node.name)}"?${node.isDir ? " (y su contenido)" : ""}`,
       onOk: async () => {
         setErr(null);
         const dirs = new Set<string>();
@@ -244,6 +331,8 @@ export default function FileTree({
           <div className="ml-auto flex items-center gap-0.5">
             <HeaderBtn title="Nuevo archivo" onClick={() => newFile(root)} icon={FileAddIcon} />
             <HeaderBtn title="Nueva carpeta" onClick={() => newFolder(root)} icon={FolderAddIcon} />
+            <HeaderBtn title="Nuevo diagrama UML" onClick={() => newDiagram(root)} icon={Flowchart01Icon} />
+            <HeaderBtn title="Nueva lista de tareas" onClick={() => newTasks(root)} icon={CheckListIcon} />
             <HeaderBtn title="Refrescar" onClick={() => bump(root)} icon={Refresh01Icon} />
           </div>
         </div>
@@ -271,6 +360,19 @@ export default function FileTree({
           >
             <MenuItem icon={FileAddIcon} label="Nuevo archivo" onClick={() => { newFile(menuTargetDir); setMenu(null); }} />
             <MenuItem icon={FolderAddIcon} label="Nueva carpeta" onClick={() => { newFolder(menuTargetDir); setMenu(null); }} />
+            <MenuItem icon={Flowchart01Icon} label="Nuevo diagrama UML" onClick={() => { newDiagram(menuTargetDir); setMenu(null); }} />
+            <MenuItem icon={CheckListIcon} label="Nueva lista de tareas" onClick={() => { newTasks(menuTargetDir); setMenu(null); }} />
+            <MenuItem icon={PaintBoardIcon} label="Nuevo Visual System" onClick={() => { newDesign(menuTargetDir); setMenu(null); }} />
+            <div className="my-1 h-px bg-zinc-800" />
+            <MenuItem
+              icon={FolderSearchIcon}
+              label={menu.node.isDir ? "Abrir en el Explorador" : "Mostrar en el Explorador"}
+              onClick={() => {
+                const target = menu.node.path;
+                setMenu(null);
+                invoke("reveal_in_explorer", { path: target }).catch((e) => setErr(String(e)));
+              }}
+            />
             {menu.node.name && (
               <>
                 <div className="my-1 h-px bg-zinc-800" />
@@ -395,7 +497,9 @@ function FileNode({ entry, depth }: { entry: Entry; depth: number }) {
     >
       <span className="w-3 shrink-0" />
       <HugeiconsIcon icon={icon} size={14} className={cn("shrink-0", color)} />
-      <span className="truncate">{entry.name}</span>
+      <span className="truncate" title={entry.name}>
+        {displayName(entry.name)}
+      </span>
     </Row>
   );
 }

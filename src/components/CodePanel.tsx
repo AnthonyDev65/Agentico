@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import type { Extension } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 import {
   javascript,
   javascriptLanguage,
@@ -18,15 +19,30 @@ import { markdown } from "@codemirror/lang-markdown";
 import { python, pythonLanguage } from "@codemirror/lang-python";
 import { rust, rustLanguage } from "@codemirror/lang-rust";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, SourceCodeIcon, EyeIcon } from "@hugeicons/core-free-icons";
-import MDEditor from "@uiw/react-md-editor";
-import "@uiw/react-md-editor/markdown-editor.css";
-import FileTree from "@/components/FileTree";
+import {
+  Cancel01Icon,
+  SourceCodeIcon,
+  EyeIcon,
+  CodeSquareIcon,
+  BookmarkAdd01Icon,
+  Flowchart01Icon,
+} from "@hugeicons/core-free-icons";
+import FileTree, { joinPath, parentOf } from "@/components/FileTree";
+import { extractMermaidBlocks } from "@/lib/diagramTemplates";
 import ComponentPreview from "@/components/ComponentPreview";
 import EnvEditor from "@/components/EnvEditor";
 import MediaView from "@/components/MediaView";
 import CsvEditor from "@/components/CsvEditor";
 import MermaidView from "@/components/MermaidView";
+import UmlVisualEditor from "@/components/uml/UmlVisualEditor";
+import TaskBoard from "@/components/TaskBoard";
+import VisualSystemView from "@/components/VisualSystemView";
+import SnippetsPanel from "@/components/SnippetsPanel";
+import MarkdownEditor from "@/components/MarkdownEditor";
+import ProjectGraph from "@/components/ProjectGraph";
+import { normPath, onFsChange } from "@/lib/fsEvents";
+import { insertSnippet, loadSnippets, userSnippetsExtension } from "@/lib/snippets";
+import { colorSwatches } from "@/lib/colorSwatches";
 import type { Project } from "@/components/Workspace";
 import {
   fileIcon,
@@ -36,6 +52,9 @@ import {
   isMarkdownFile,
   isCsvFile,
   isMermaidFile,
+  isTasksFile,
+  isDesignFile,
+  displayName,
   mediaKindOf,
   type MediaKind,
 } from "@/lib/fileIcons";
@@ -51,6 +70,7 @@ type OpenFile = {
   dirty: boolean;
   error?: string;
   preview?: boolean;
+  visual?: boolean; // .mmd: editor UML sin código
 };
 
 // ── IntelliSense ligero: autocompletado de palabras del documento + snippets ──
@@ -154,6 +174,8 @@ function langFor(name: string): Extension[] {
     case "less":
       return withWords(css(), cssLanguage, CSS_SNIPPETS);
     case "md":
+    case "tasks":
+    case "design":
     case "markdown":
       return [markdown()];
     case "py":
@@ -179,6 +201,84 @@ export default function CodePanel({ project }: { project: Project }) {
   const [active, setActive] = useState<string | null>(null);
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const activeFile = open.find((f) => f.path === active) ?? null;
+  // Snippets: vista de CodeMirror activa (solo hay una montada a la vez).
+  const viewRef = useRef<EditorView | null>(null);
+  const [snipPanel, setSnipPanel] = useState<{ draft: string | null } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; hasSel: boolean } | null>(null);
+
+  useEffect(() => {
+    loadSnippets();
+  }, []);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener("mousedown", close);
+    window.addEventListener("blur", close);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("blur", close);
+    };
+  }, [ctxMenu]);
+
+  const extensions = useMemo(
+    () => (activeFile ? [...langFor(activeFile.name), userSnippetsExtension(activeFile.name), colorSwatches()] : []),
+    [activeFile?.name],
+  );
+
+  const selectionText = () => {
+    const v = viewRef.current;
+    if (!v) return "";
+    const { from, to } = v.state.selection.main;
+    return v.state.sliceDoc(from, to);
+  };
+  const saveSelectionAsSnippet = () => setSnipPanel({ draft: selectionText() });
+
+  // Markdown con bloques ```mermaid → botón «Pasar a .mmd».
+  const [treeRefresh, setTreeRefresh] = useState<{ dir: string; seq: number } | null>(null);
+  const [mmdMsg, setMmdMsg] = useState<string | null>(null);
+  const mdDiagrams = useMemo(
+    () =>
+      activeFile?.kind === "text" && isMarkdownFile(activeFile.name)
+        ? extractMermaidBlocks(activeFile.content)
+        : [],
+    [activeFile?.kind, activeFile?.name, activeFile?.content],
+  );
+
+  const convertToMmd = async () => {
+    if (!activeFile || !mdDiagrams.length) return;
+    const dir = parentOf(activeFile.path);
+    const base = activeFile.name.replace(/\.[^.]+$/, "");
+    const created: { path: string; name: string }[] = [];
+    try {
+      for (const d of mdDiagrams) {
+        const stem = mdDiagrams.length > 1 ? `${base}-${d.type}` : base;
+        // Nombre libre: base.mmd, base-2.mmd, … (fs_create_file falla si ya existe).
+        for (let i = 1; ; i++) {
+          const name = `${stem}${i > 1 ? `-${i}` : ""}.mmd`;
+          const path = joinPath(dir, name);
+          try {
+            await invoke("fs_create_file", { path });
+          } catch {
+            if (i < 100) continue;
+            throw new Error(`No se pudo crear ${name}`);
+          }
+          await invoke("fs_write", { path, content: d.code + "\n" });
+          created.push({ path, name });
+          break;
+        }
+      }
+      setTreeRefresh((r) => ({ dir, seq: (r?.seq ?? 0) + 1 }));
+      setMmdMsg(
+        created.length === 1 ? `Creado ${created[0].name}` : `Creados ${created.length} archivos .mmd`,
+      );
+      setTimeout(() => setMmdMsg(null), 2500);
+      await openFile(created[0].path, created[0].name);
+    } catch (e: any) {
+      setMmdMsg(`Error: ${e?.message ?? e}`);
+      setTimeout(() => setMmdMsg(null), 4000);
+    }
+  };
 
   const openFile = async (path: string, name: string) => {
     setActive(path);
@@ -227,7 +327,7 @@ export default function CodePanel({ project }: { project: Project }) {
       setOpen((prev) =>
         prev.some((f) => f.path === path)
           ? prev
-          : [...prev, { path, name, kind: "text", content, dirty: false }],
+          : [...prev, { path, name, kind: "text", content, dirty: false, visual: isMermaidFile(name) && !content.trim() }],
       );
     } catch (err) {
       setOpen((prev) =>
@@ -242,6 +342,69 @@ export default function CodePanel({ project }: { project: Project }) {
     if (!active) return;
     setOpen((prev) => prev.map((f) => (f.path === active ? { ...f, content: val, dirty: true } : f)));
   };
+
+  // .tasks: el tablero guarda solo (debounce) para que Claude vea los cambios al momento,
+  // y se recarga si el archivo cambia en disco (p.ej. Claude marca una tarea).
+  const openRef = useRef(open);
+  openRef.current = open;
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTasksChange = (val: string) => {
+    const path = active;
+    if (!path) return;
+    setOpen((prev) => prev.map((f) => (f.path === path ? { ...f, content: val, dirty: true } : f)));
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(async () => {
+      try {
+        await invoke("fs_write", { path, content: val });
+        setOpen((prev) => prev.map((f) => (f.path === path && f.content === val ? { ...f, dirty: false } : f)));
+      } catch {
+        /* queda dirty: se puede guardar con Ctrl+S */
+      }
+    }, 400);
+  };
+
+  // Archivos "vivos" de Agentico (tareas, visual system): se recargan si Claude los edita.
+  // Si el agente (u otro programa) edita un archivo abierto que no tiene cambios
+  // pendientes, se recarga: así nunca se ve ni se guarda encima una versión vieja.
+  useEffect(
+    () =>
+      onFsChange(project.path, async (c) => {
+        const touched = new Set(c.files.map(normPath));
+        for (const f of openRef.current) {
+          if (f.kind !== "text" || f.dirty || f.error || !touched.has(normPath(f.path))) continue;
+          try {
+            const disk = await invoke<string>("fs_read", { path: f.path });
+            setOpen((prev) => prev.map((x) => (x.path === f.path && !x.dirty && x.content !== disk ? { ...x, content: disk } : x)));
+          } catch {
+            /* borrado o binario: se deja como está */
+          }
+        }
+      }),
+    [project.path],
+  );
+
+  const watchPath =
+    activeFile && (isTasksFile(activeFile.name) || isDesignFile(activeFile.name)) && !activeFile.error
+      ? activeFile.path
+      : null;
+  useEffect(() => {
+    if (!watchPath) return;
+    const id = setInterval(async () => {
+      const f = openRef.current.find((x) => x.path === watchPath);
+      if (!f || f.dirty) return;
+      try {
+        const disk = await invoke<string>("fs_read", { path: watchPath });
+        if (disk !== f.content) {
+          setOpen((prev) =>
+            prev.map((x) => (x.path === watchPath && !x.dirty ? { ...x, content: disk } : x)),
+          );
+        }
+      } catch {
+        /* archivo borrado/renombrado: se ignora */
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [watchPath]);
 
   const save = async (path: string) => {
     const f = open.find((x) => x.path === path);
@@ -285,12 +448,29 @@ export default function CodePanel({ project }: { project: Project }) {
 
   const setPreview = (v: boolean) => {
     if (!active) return;
-    setOpen((prev) => prev.map((f) => (f.path === active ? { ...f, preview: v } : f)));
+    setOpen((prev) => prev.map((f) => (f.path === active ? { ...f, preview: v, visual: false } : f)));
+  };
+  const setVisual = () => {
+    if (!active) return;
+    setOpen((prev) => prev.map((f) => (f.path === active ? { ...f, visual: true } : f)));
   };
 
   const showToggle = activeFile?.kind === "text" && !activeFile.error && isComponentFile(activeFile.name);
   const showEnvToggle = activeFile?.kind === "text" && !activeFile.error && isEnvFile(activeFile.name);
   const showCsvToggle = activeFile?.kind === "text" && !activeFile.error && isCsvFile(activeFile.name);
+  const showTasksToggle = activeFile?.kind === "text" && !activeFile.error && isTasksFile(activeFile.name);
+  const showDesignToggle = activeFile?.kind === "text" && !activeFile.error && isDesignFile(activeFile.name);
+  const showMdToggle = activeFile?.kind === "text" && !activeFile.error && isMarkdownFile(activeFile.name);
+  const usesCodeMirror =
+    activeFile?.kind === "text" &&
+    !activeFile.error &&
+    !(isMarkdownFile(activeFile.name) && !activeFile.preview) &&
+    !(isEnvFile(activeFile.name) && !activeFile.preview) &&
+    !(isCsvFile(activeFile.name) && !activeFile.preview) &&
+    !(isTasksFile(activeFile.name) && !activeFile.preview) &&
+    !(isDesignFile(activeFile.name) && !activeFile.preview) &&
+    !(isMermaidFile(activeFile.name) && (activeFile.visual || !activeFile.preview)) &&
+    !(activeFile.preview && isComponentFile(activeFile.name));
   const showMermaidToggle =
     activeFile?.kind === "text" && !activeFile.error && isMermaidFile(activeFile.name);
 
@@ -298,8 +478,61 @@ export default function CodePanel({ project }: { project: Project }) {
     <div className="flex h-full min-h-0">
       {/* Árbol de archivos */}
       <div className="w-56 shrink-0 overflow-hidden border-r border-zinc-800 bg-[#121212]">
-        <FileTree root={project.path} onOpenFile={openFile} activePath={active} />
+        <FileTree
+          root={project.path}
+          onOpenFile={openFile}
+          activePath={active}
+          refresh={treeRefresh}
+        />
       </div>
+
+      {snipPanel && (
+        <SnippetsPanel
+          fileName={activeFile?.name ?? null}
+          draftBody={snipPanel.draft}
+          canInsert={usesCodeMirror && !!viewRef.current}
+          onInsert={(s) => {
+            setSnipPanel(null);
+            if (viewRef.current) insertSnippet(viewRef.current, s);
+          }}
+          onClose={() => setSnipPanel(null)}
+        />
+      )}
+
+      {ctxMenu &&
+        createPortal(
+          <div
+            className="fixed z-[80] w-56 rounded-lg border border-zinc-800 bg-[#1a1a1a] p-1 text-xs shadow-xl"
+            style={{ left: Math.min(ctxMenu.x, window.innerWidth - 232), top: Math.min(ctxMenu.y, window.innerHeight - 90) }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              disabled={!ctxMenu.hasSel}
+              onClick={() => {
+                setCtxMenu(null);
+                saveSelectionAsSnippet();
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent"
+            >
+              <HugeiconsIcon icon={BookmarkAdd01Icon} size={13} />
+              Guardar selección como snippet
+              <span className="ml-auto text-[10px] text-zinc-500">Ctrl+⇧+S</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCtxMenu(null);
+                setSnipPanel({ draft: null });
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            >
+              <HugeiconsIcon icon={CodeSquareIcon} size={13} />
+              Insertar snippet…
+            </button>
+          </div>,
+          document.body,
+        )}
 
       {pendingClose &&
         createPortal(
@@ -347,9 +580,7 @@ export default function CodePanel({ project }: { project: Project }) {
       {/* Editor */}
       <div className="flex min-w-0 flex-1 flex-col">
         {open.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-zinc-600">
-            Selecciona un archivo del árbol
-          </div>
+          <ProjectGraph projectPath={project.path} onOpenFile={openFile} />
         ) : (
           <>
             {/* Barra de pestañas + toggle Código/Preview */}
@@ -375,7 +606,9 @@ export default function CodePanel({ project }: { project: Project }) {
                       )}
                     >
                       <HugeiconsIcon icon={icon} size={12} className={cn("shrink-0", color)} />
-                      <span className="max-w-[140px] truncate">{f.name}</span>
+                      <span className="max-w-[140px] truncate" title={f.path}>
+                        {displayName(f.name)}
+                      </span>
                       {f.dirty && <span className="size-1.5 shrink-0 rounded-full bg-zinc-400" />}
                       <button
                         type="button"
@@ -395,6 +628,36 @@ export default function CodePanel({ project }: { project: Project }) {
                   );
                 })}
               </div>
+              <div className="flex shrink-0 items-center pl-2">
+                <button
+                  type="button"
+                  onClick={() => setSnipPanel({ draft: null })}
+                  title="Snippets (Ctrl+Shift+S guarda la selección)"
+                  className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                >
+                  <HugeiconsIcon icon={CodeSquareIcon} size={13} /> Snippets
+                </button>
+              </div>
+              {mmdMsg && (
+                <div className="flex shrink-0 items-center px-2 text-[11px] text-zinc-400">{mmdMsg}</div>
+              )}
+              {mdDiagrams.length > 0 && (
+                <div className="flex shrink-0 items-center pl-1">
+                  <button
+                    type="button"
+                    onClick={convertToMmd}
+                    title={`Crear ${mdDiagrams.length > 1 ? `${mdDiagrams.length} archivos` : "un archivo"} .mmd con ${
+                      mdDiagrams.length > 1 ? "los diagramas" : "el diagrama"
+                    } de este Markdown (${mdDiagrams.map((d) => d.type).join(", ")})`}
+                    className="flex items-center gap-1 rounded-md border border-pink-500/30 px-1.5 py-0.5 text-[11px] text-pink-300 hover:bg-pink-500/10"
+                  >
+                    <HugeiconsIcon icon={Flowchart01Icon} size={13} /> Pasar a .mmd
+                    {mdDiagrams.length > 1 && (
+                      <span className="rounded bg-pink-500/20 px-1 text-[10px]">{mdDiagrams.length}</span>
+                    )}
+                  </button>
+                </div>
+              )}
               {showToggle && (
                 <div className="flex shrink-0 items-center px-2">
                   <div className="flex overflow-hidden rounded-md border border-zinc-800 text-[11px]">
@@ -447,6 +710,86 @@ export default function CodePanel({ project }: { project: Project }) {
                   </div>
                 </div>
               )}
+              {showMdToggle && (
+                <div className="flex shrink-0 items-center px-2">
+                  <div className="flex overflow-hidden rounded-md border border-zinc-800 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setPreview(false)}
+                      title="Documento formateado y editable"
+                      className={cn(
+                        "px-2 py-0.5",
+                        !activeFile?.preview ? "bg-indigo-600 text-white" : "text-zinc-400",
+                      )}
+                    >
+                      Diseñado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreview(true)}
+                      title="Markdown en texto plano"
+                      className={cn(
+                        "px-2 py-0.5 font-mono",
+                        activeFile?.preview ? "bg-zinc-700 text-white" : "text-zinc-400",
+                      )}
+                    >
+                      RAW
+                    </button>
+                  </div>
+                </div>
+              )}
+              {showDesignToggle && (
+                <div className="flex shrink-0 items-center px-2">
+                  <div className="flex overflow-hidden rounded-md border border-zinc-800 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setPreview(false)}
+                      className={cn(
+                        "px-2 py-0.5",
+                        !activeFile?.preview ? "bg-pink-600 text-white" : "text-zinc-400",
+                      )}
+                    >
+                      Visual
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreview(true)}
+                      className={cn(
+                        "px-2 py-0.5",
+                        activeFile?.preview ? "bg-zinc-700 text-white" : "text-zinc-400",
+                      )}
+                    >
+                      Texto
+                    </button>
+                  </div>
+                </div>
+              )}
+              {showTasksToggle && (
+                <div className="flex shrink-0 items-center px-2">
+                  <div className="flex overflow-hidden rounded-md border border-zinc-800 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setPreview(false)}
+                      className={cn(
+                        "px-2 py-0.5",
+                        !activeFile?.preview ? "bg-emerald-600 text-white" : "text-zinc-400",
+                      )}
+                    >
+                      Tareas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreview(true)}
+                      className={cn(
+                        "px-2 py-0.5",
+                        activeFile?.preview ? "bg-zinc-700 text-white" : "text-zinc-400",
+                      )}
+                    >
+                      Texto
+                    </button>
+                  </div>
+                </div>
+              )}
               {showCsvToggle && (
                 <div className="flex shrink-0 items-center px-2">
                   <div className="flex overflow-hidden rounded-md border border-zinc-800 text-[11px]">
@@ -478,10 +821,21 @@ export default function CodePanel({ project }: { project: Project }) {
                   <div className="flex overflow-hidden rounded-md border border-zinc-800 text-[11px]">
                     <button
                       type="button"
+                      onClick={setVisual}
+                      title="Editar el diagrama con formularios, sin código"
+                      className={cn(
+                        "px-2 py-0.5",
+                        activeFile?.visual ? "bg-indigo-600 text-white" : "text-zinc-400",
+                      )}
+                    >
+                      Visual
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setPreview(false)}
                       className={cn(
                         "px-2 py-0.5",
-                        !activeFile?.preview ? "bg-indigo-600 text-white" : "text-zinc-400",
+                        !activeFile?.visual && !activeFile?.preview ? "bg-indigo-600 text-white" : "text-zinc-400",
                       )}
                     >
                       Diagrama
@@ -491,7 +845,7 @@ export default function CodePanel({ project }: { project: Project }) {
                       onClick={() => setPreview(true)}
                       className={cn(
                         "px-2 py-0.5",
-                        activeFile?.preview ? "bg-zinc-700 text-white" : "text-zinc-400",
+                        !activeFile?.visual && activeFile?.preview ? "bg-zinc-700 text-white" : "text-zinc-400",
                       )}
                     >
                       Código
@@ -507,8 +861,15 @@ export default function CodePanel({ project }: { project: Project }) {
               onKeyDown={(e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
                   e.preventDefault();
-                  if (active) save(active);
+                  if (e.shiftKey) {
+                    if (usesCodeMirror) saveSelectionAsSnippet();
+                  } else if (active) save(active);
                 }
+              }}
+              onContextMenu={(e) => {
+                if (!usesCodeMirror || !viewRef.current) return;
+                e.preventDefault();
+                setCtxMenu({ x: e.clientX, y: e.clientY, hasSel: !!selectionText().trim() });
               }}
             >
               {!activeFile ? null : activeFile.error ? (
@@ -536,6 +897,27 @@ export default function CodePanel({ project }: { project: Project }) {
                   initialContent={activeFile.content}
                   onChange={onChange}
                 />
+              ) : isDesignFile(activeFile.name) && !activeFile.preview ? (
+                <VisualSystemView
+                  content={activeFile.content}
+                  onChange={onTasksChange}
+                  projectPath={project.path}
+                  designPath={activeFile.path}
+                />
+              ) : isTasksFile(activeFile.name) && !activeFile.preview ? (
+                <TaskBoard
+                  key={activeFile.path}
+                  content={activeFile.content}
+                  onChange={onTasksChange}
+                  projectPath={project.path}
+                  filePath={activeFile.path}
+                  relPath={
+                    activeFile.path
+                      .slice(project.path.length)
+                      .replace(/^[\\/]+/, "")
+                      .replace(/\\/g, "/") || activeFile.name
+                  }
+                />
               ) : isCsvFile(activeFile.name) && !activeFile.preview ? (
                 <CsvEditor
                   key={activeFile.path}
@@ -543,18 +925,24 @@ export default function CodePanel({ project }: { project: Project }) {
                   name={activeFile.name}
                   onChange={onChange}
                 />
-              ) : isMarkdownFile(activeFile.name) ? (
-                <div data-color-mode="dark" className="h-full overflow-hidden">
-                  <MDEditor
-                    value={activeFile.content}
-                    onChange={(v) => onChange(v ?? "")}
-                    height="100%"
-                    preview="live"
-                    visibleDragbar={false}
-                  />
-                </div>
+              ) : isMarkdownFile(activeFile.name) && !activeFile.preview ? (
+                <MarkdownEditor key={activeFile.path} path={activeFile.path} content={activeFile.content} onChange={onChange} />
+              ) : isMermaidFile(activeFile.name) && activeFile.visual ? (
+                <UmlVisualEditor
+                  key={activeFile.path}
+                  code={activeFile.content}
+                  filePath={activeFile.path}
+                  onChange={onChange}
+                  onShowCode={() => setPreview(true)}
+                />
               ) : isMermaidFile(activeFile.name) && !activeFile.preview ? (
-                <MermaidView code={activeFile.content} />
+                <MermaidView
+                  key={activeFile.path}
+                  code={activeFile.content}
+                  filePath={activeFile.path}
+                  onInsertTemplate={onChange}
+                  onCreateVisual={setVisual}
+                />
               ) : activeFile.preview && isComponentFile(activeFile.name) ? (
                 <ComponentPreview
                   projectPath={project.path}
@@ -566,9 +954,10 @@ export default function CodePanel({ project }: { project: Project }) {
                   value={activeFile.content}
                   height="100%"
                   theme={oneDark}
-                  extensions={langFor(activeFile.name)}
+                  extensions={extensions}
                   basicSetup={EDITOR_SETUP}
                   onChange={onChange}
+                  onCreateEditor={(view) => (viewRef.current = view)}
                   className="h-full text-[13px]"
                 />
               )}

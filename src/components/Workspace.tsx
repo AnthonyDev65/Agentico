@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { watchDesignSync } from "@/lib/designSync";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Message01Icon, Cancel01Icon, Clock01Icon } from "@hugeicons/core-free-icons";
-import ChatView from "@/ChatView";
+import { Message01Icon, Cancel01Icon, Clock01Icon, BubbleChatAddIcon } from "@hugeicons/core-free-icons";
+import ChatView, { type ResumeReq } from "@/ChatView";
 import TerminalPanel from "@/components/TerminalPanel";
 import PhonePreview from "@/components/PhonePreview";
 import ConversationHistory from "@/components/ConversationHistory";
@@ -33,6 +34,23 @@ function initialPhoneWidth(): number {
 export default function Workspace({ project }: { project: Project }) {
   const [phoneMode, setPhoneMode] = useState(false);
   const [chatVisible, setChatVisible] = useState(true);
+  // Vigila el proyecto en disco: árbol, grafo y editor se actualizan solos (fs://change).
+  useEffect(() => {
+    invoke("fs_watch_start", { path: project.path }).catch(() => {});
+    // Visual System → tokens CSS: al cambiar un .design se regenera su archivo de tokens.
+    const offDesign = watchDesignSync(project.path);
+    return () => {
+      offDesign();
+      invoke("fs_watch_stop", { path: project.path }).catch(() => {});
+    };
+  }, [project.path]);
+  useEffect(() => {
+    const h = (e: Event) => {
+      if ((e as CustomEvent<{ sessionId: string }>).detail?.sessionId === project.path) setChatVisible(true);
+    };
+    window.addEventListener("agentico:chat-prompt", h);
+    return () => window.removeEventListener("agentico:chat-prompt", h);
+  }, [project.path]);
   const [chatWidth, setChatWidth] = useState(initialChatWidth);
   const [phoneWidth, setPhoneWidth] = useState(initialPhoneWidth);
   const [dragging, setDragging] = useState(false);
@@ -40,7 +58,8 @@ export default function Workspace({ project }: { project: Project }) {
   const [phoneMounted, setPhoneMounted] = useState(false);
   const [phoneShown, setPhoneShown] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [resume, setResume] = useState<{ id: string; file: string; nonce: number } | null>(null);
+  const [resume, setResume] = useState<ResumeReq | null>(null);
+  const [newChat, setNewChat] = useState(0);
   const nonceRef = useRef(0);
 
   // Puerto del dev server, guardado por proyecto.
@@ -129,7 +148,7 @@ export default function Workspace({ project }: { project: Project }) {
   return (
     <div className="flex h-full min-h-0">
       {/* Área de trabajo — siempre visible */}
-      <section className="relative min-w-0 flex-1">
+      <section className="relative min-w-0 flex-1 overflow-hidden">
         <TerminalPanel
           project={project}
           pkg={pkg}
@@ -182,9 +201,18 @@ export default function Workspace({ project }: { project: Project }) {
             </span>
             <button
               type="button"
+              onClick={() => setNewChat((n) => n + 1)}
+              title="Nuevo chat (la conversación actual queda en el historial)"
+              className="ml-auto flex h-6 items-center gap-1 rounded px-1.5 normal-case tracking-normal text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            >
+              <HugeiconsIcon icon={BubbleChatAddIcon} size={14} />
+              Nuevo
+            </button>
+            <button
+              type="button"
               onClick={() => setShowHistory(true)}
               title="Historial de conversaciones"
-              className="ml-auto flex size-6 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              className="flex size-6 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
             >
               <HugeiconsIcon icon={Clock01Icon} size={14} />
             </button>
@@ -197,7 +225,7 @@ export default function Workspace({ project }: { project: Project }) {
               <HugeiconsIcon icon={Cancel01Icon} size={14} />
             </button>
           </div>
-          <ChatView sessionId={project.path} cwd={project.path} resume={resume} />
+          <ChatView sessionId={project.path} cwd={project.path} resume={resume} newChat={newChat} />
         </section>
       </div>
 
@@ -208,7 +236,8 @@ export default function Workspace({ project }: { project: Project }) {
           cwd={project.path}
           onClose={() => setShowHistory(false)}
           onResume={(s) => {
-            setResume({ id: s.id, file: s.file, nonce: ++nonceRef.current });
+            const last = s.parts[s.parts.length - 1];
+            setResume({ id: last.id, file: last.file, parts: s.parts, thread: s.key, nonce: ++nonceRef.current });
             setChatVisible(true);
             setShowHistory(false);
           }}

@@ -25,7 +25,23 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.8"
 base64 = "0.22"
+arboard = { version = "3", default-features = false }
+regex = "1.13"
+notify = "=8.2.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Gestor de bases de datos PostgreSQL (TLS nativo de Windows; contraseñas en el
+# Administrador de credenciales).
+tokio-postgres = "=0.7.18"
+postgres-native-tls = "=0.5.3"
+native-tls = "0.2.18"
+keyring = { version = "=3.6.3", features = ["windows-native"] }
+# Control remoto (servidor HTTP + SSE para el teléfono). Mismas versiones que ya fija el lockfile.
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { version = "1", features = ["net", "sync", "time", "macros", "rt"] }
+getrandom = "0.2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
